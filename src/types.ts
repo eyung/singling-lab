@@ -1,6 +1,18 @@
 // Parse granularity levels
 export type ParseLevel = 'letter' | 'word' | 'phrase' | 'sentence' | 'paragraph'
 
+// A named oscillator-based timbre preset
+export interface InstrumentPreset {
+  id: string
+  name: string
+  waveform: OscillatorType
+  filterCutoff: number    // Hz
+  filterQ: number
+  attack: number          // seconds
+  release: number         // seconds
+  gain: number            // 0–1
+}
+
 // Semantic signals extracted from text
 export interface SemanticSignal {
   sentiment: number       // -1 (negative) to 1 (positive)
@@ -58,6 +70,7 @@ export interface AppParams {
   semantic: SemanticParams
   polyphony: number             // max simultaneous voices
   tempo: number                 // ms between units (base)
+  instrument: string            // ID of last-applied InstrumentPreset
 }
 
 // Clamp a number to [min, max]
@@ -114,6 +127,7 @@ export const DEFAULT_LEVEL_PARAMS: LevelParams = {
 
 export const DEFAULT_PARAMS: AppParams = {
   parseLevel: 'word',
+  instrument: 'default',
   levels: {
     letter:    { ...DEFAULT_LEVEL_PARAMS, pitchMax: 1760, durationMax: 0.15 },
     word:      { ...DEFAULT_LEVEL_PARAMS },
