@@ -1,5 +1,6 @@
 import type { AppParams, ParseLevel, LevelParams } from '../types'
 import { validateLevelParams, validateAppParams } from '../types'
+import { INSTRUMENT_PRESETS, applyPreset } from '../instruments'
 
 interface Props {
   params: AppParams
@@ -102,6 +103,22 @@ export default function Controls({ params, onChange }: Props) {
     <div className="w-1/2 overflow-y-auto p-4 flex flex-col gap-4">
       <section className="flex flex-col gap-2">
         <h2 className="text-xs font-mono text-zinc-500 uppercase tracking-wider">Global</h2>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-mono text-zinc-500">instrument</span>
+          <select
+            value={params.instrument}
+            onChange={e => {
+              const id = e.target.value
+              const levels = applyPreset(id, params.levels)
+              onChange(validateAppParams({ ...params, instrument: id, levels }))
+            }}
+            className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs font-mono text-zinc-300"
+          >
+            {INSTRUMENT_PRESETS.map(p => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+        </label>
         <Slider label="tempo (ms/unit)" min={50} max={5000} step={10} value={params.tempo} onChange={v => onChange(validateAppParams({ ...params, tempo: v }))} />
         <Slider label="polyphony" min={1} max={16} step={1} value={params.polyphony} onChange={v => onChange(validateAppParams({ ...params, polyphony: v }))} />
       </section>
