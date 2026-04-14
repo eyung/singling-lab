@@ -1,25 +1,48 @@
 <!--
 SYNC IMPACT REPORT
 ==================
-Version change:   (none) → 1.0.0  [initial ratification — no prior version]
-Run date:         2026-04-10
+Version change:   1.0.0 → 2.0.0  [MAJOR — new principles, amended principles, new vocabulary,
+                                   expanded semantic system, resolved open questions]
+Run date:         2026-04-14
 
-Modified principles:  none
-Added sections:       none
-Removed sections:     none
+Modified principles:
+  - I. Non-Phonetic: clarified that phonetic TTS is permitted as an explicit accessibility
+    option, separate from the core non-phonetic instrument; the instrument itself remains non-phonetic
+  - VIII. No External Audio Dependencies: unchanged; MIDI and WAV export are output formats
+    (file writing), not audio synthesis dependencies
+
+Added principles:
+  - IX. Reduce Ambiguity — output ambiguity must be minimised for research validity
+  - X. Persist & Portability — configuration must be saveable and shareable
+  - XI. Accessibility First — must support screen readers and visually disabled users
+
+Added sections:
+  - Vision & Mission
+  - Users & Audiences
+  - Output Formats
+  - Live Mode
+
+Modified sections:
+  - Semantic System: substantially expanded (WordNet, modals, keywords, word frequency,
+    punctuation, function words)
+  - Scope & Boundaries: updated to reflect successor relationship to Singling 1.0
+  - Open Questions: several resolved; remaining flagged
+
+Removed sections:  none
 
 Template sync status:
-  ✅ .specify/templates/plan-template.md  — Constitution Check gates filled with
-     singling-lab-specific principle gates (I, III, IV, V, VII, VIII).
-  ✅ .specify/templates/spec-template.md  — No conflicts with constitution. No changes needed.
-  ✅ .specify/templates/tasks-template.md — Path conventions are single-project compatible.
-     No changes needed.
-  ⚠  .specify/templates/agent-file-template.md — All placeholders uninitialised.
-     Expected: requires plan.md to be created first via /speckit-plan.
+  ⚠  .specify/templates/plan-template.md  — Constitution Check gates need updating:
+     Add gates for principles IX, X, XI. Flag as requiring manual update.
+  ✅ .specify/templates/spec-template.md  — No structural conflicts.
+  ✅ .specify/templates/tasks-template.md — No conflicts.
+  ⚠  .specify/templates/agent-file-template.md — CLAUDE.md needs sync after next plan.
 
 Deferred TODOs:
-  - Open Questions section contains 7 unresolved design decisions (see §Open Questions).
-    These are intentionally deferred; resolve via /speckit-specify as each becomes in-scope.
+  - Phrase parser definition: partially resolved; full definition deferred to dedicated spec
+  - Live mode: scoped as future feature; spec pending
+  - Browser plugin: deferred; not in scope for current implementation
+  - Multilingual support: English first; expansion deferred
+  - Bold/italic text as semantic signal: deferred to later stage
 
 Validation:
   ✅ No unexplained bracket tokens remain.
@@ -30,12 +53,54 @@ Validation:
 
 # singling-lab Constitution
 
+## Vision & Mission
+
+singling-lab is the web-based successor to Singling 1.0. Its core mission is to enable text
+to be "read" as non-phonetic sound, transforming written language into an arbitrary musical
+form of expression — one that preserves the temporal nature of language so that context,
+implication, ambiguity, and nuance remain present in the output. The goal is to make sound
+interpretable: listeners should be able to derive meaning from the audio, a capacity the
+project calls **literacoustics**.
+
+Text sonification differs from text visualization because it maintains temporal structure.
+Visualization collapses language into a spatial artefact and loses sequence; sonification
+preserves the reading order and therefore preserves the relational meaning between units.
+
+singling-lab overcomes the key limitations of Singling 1.0: it runs in a browser without
+installation, reduces ambiguous outputs, produces results faster, and supports parsing at
+larger granularities (phrase, sentence, paragraph) with configurable semantic analysis.
+
+## Users & Audiences
+
+**Primary users**: The general public, with initial priority given to:
+1. People with visual disabilities who rely on auditory channels
+2. Language, literacy, and sound researchers
+3. Accessibility and inclusion practitioners
+4. Composers and sound artists
+5. Writers and teachers
+
+**Literacy assumption**: No deep knowledge of music, linguistics, or technology is required
+to produce output. Entry-level presets allow any first-time user to sonify text immediately.
+Advanced configuration teaches the user about musical, grammatical, and technological
+concepts as they explore.
+
+**Successful first session**: The user leaves with:
+- A `.wav` file of their sonified text
+- A `.txt` file of their parsed text (as a learning resource)
+- Optionally, a `.mid` MIDI file for further musical exploration
+- Increased understanding of how language is structured and how musical sound is described
+
 ## Core Principles
 
 ### I. Non-Phonetic
-The system MUST never attempt to approximate the pronunciation of text. Sound is
+The core instrument MUST never attempt to approximate the pronunciation of text. Sound is
 structural and semantic, not articulatory. Letter-level parsing does not assign
 phoneme-based pitches to letters — letters are hashed, not transliterated.
+
+**Exception**: A phonetic text-to-voice (TTS) rendering MAY be offered as a separate,
+explicit **accessibility feature** for users with visual disabilities. This feature is
+distinct from the core instrument and MUST be clearly labelled as TTS rather than
+sonification. It does not affect or replace the non-phonetic synthesis chain.
 
 ### II. Deterministic Within a Session
 Given the same text and the same parameters, the system MUST produce the same
@@ -45,21 +110,27 @@ system load but is not part of the Sound Params contract.)
 
 ### III. Client-Side First
 All core functionality MUST run in the browser. No server round-trips are required
-for parsing, mapping, or sound production. Semantic analysis is client-side only;
-no API calls are made for NLP processing. Vercel deployment is static; server
-functions are reserved for future optional enhancements only.
+for parsing, mapping, or sound production. Semantic analysis is client-side only.
+Vercel deployment is static; server functions are reserved for future optional
+enhancements only.
 
 ### IV. Parameters Over Presets
-The instrument rewards exploration. Defaults MUST be immediately interesting, but
-the parameter space MUST be wide enough that no two users arrive at the same sound.
-Every sonic property that the mapping produces MUST be exposed as a user-adjustable
-parameter. Nothing is hardcoded that could reasonably vary.
+The instrument rewards exploration. Defaults MUST be immediately interesting and
+accessible to first-time users via presets. The parameter space MUST be wide enough
+that no two users arrive at the same sound. Every sonic property that the mapping
+produces MUST be exposed as a user-adjustable parameter. Nothing is hardcoded that
+could reasonably vary.
+
+Presets are a starting point, not a ceiling.
 
 ### V. Structural Levels Are Orthogonal
 Only one Parse Level is active at a time. Levels MUST NOT stack or nest during
 playback. Multi-level simultaneous layering is deferred and will only be introduced
 as an explicitly scoped feature. Disabling a level silences it but preserves its
 timing slot in the playback sequence.
+
+**Toggling**: The user MUST be able to switch seamlessly between parse levels
+(paragraph → sentence → phrase → word → letter) without restarting the session.
 
 ### VI. Silence Is Valid
 An empty segment, a unit that fails voice-steal, or a disabled level are all
@@ -68,12 +139,47 @@ legitimate outcomes. The instrument MUST NOT force sound. Silence is information
 ### VII. The Text Is Not Consumed
 Playback is a reading, not a transformation. The source text MUST never be modified
 by the playback engine. The system operates on a snapshot of the text taken at
-play-time.
+play-time. The original text is always preserved.
 
 ### VIII. No External Audio Dependencies
 All synthesis MUST use the native browser Web Audio API. No external audio libraries
 are permitted. The synthesis chain is:
 OscillatorNode → BiquadFilterNode (lowpass) → GainNode → AudioContext.destination.
+
+WAV and MIDI export are output formats (file writing operations) and are not audio
+synthesis dependencies. External libraries for file encoding (e.g., WAV encoding
+utilities) are permitted for export only, not for synthesis.
+
+### IX. Reduce Ambiguity
+The primary purpose of singling-lab is to be useful for **research and analysis**.
+This means output MUST be as deterministic and unambiguous as possible. Unlike
+Singling 1.0, which embraced linguistic ambiguity as an aesthetic, singling-lab
+MUST resolve ambiguity in the output wherever possible. When a word is ambiguous
+(e.g., noun/verb), a resolution strategy MUST be applied and documented — not left
+to produce inconsistent sonic output. Aesthetic ambiguity is deferred to user-level
+configuration, not baked into the mapping.
+
+### X. Persist & Portability
+Configuration MUST be saveable and shareable between sessions and between users.
+This is non-negotiable for research use, where different researchers MUST be able
+to compare interpretations of the same or different texts using identical parameter
+configurations.
+
+- MUST support exporting the full parameter state as a file (canonical format TBD)
+- MUST support importing a saved configuration file to restore state
+- Saved configurations MUST be human-readable and diffable
+- Session persistence within a single browser session is a minimum; cross-session
+  persistence (localStorage or file-based) is required for v1
+
+### XI. Accessibility First
+singling-lab MUST be usable by people with visual disabilities as a primary use case,
+not an afterthought.
+
+- MUST support screen readers (semantic HTML, ARIA labels)
+- MUST be operable without a mouse (keyboard navigation for all controls)
+- No login MUST be required to use core functionality (login is optional)
+- Use MUST be free of charge (open access)
+- Language: English at launch; additional language support deferred
 
 ## Technical Specifications
 
@@ -87,26 +193,45 @@ OscillatorNode → BiquadFilterNode (lowpass) → GainNode → AudioContext.dest
 | **Unit** | A single segment produced by parsing — the atomic trigger of a sound event. |
 | **Event** | The instantiation of a sound in response to a Unit. |
 | **Sound Params** | The complete set of audio parameters that define a single Event. |
-| **Semantic Signal** | Derived properties of a Unit's meaning: sentiment, energy, part-of-speech tags. |
+| **Semantic Signal** | Derived properties of a Unit's meaning: sentiment, energy, POS tags, word class, frequency tier. |
 | **Mapping** | The function that transforms a Unit and its Semantic Signal into Sound Params. |
 | **Level Params** | User-controlled parameters that govern the Mapping for a specific Parse Level. |
 | **Semantic Override** | A modifier that adjusts Sound Params based on Semantic Signal values. |
 | **Voice** | A single active audio chain (oscillator → filter → gain). |
 | **Polyphony** | The maximum number of Voices active simultaneously. |
 | **Tempo** | The base interval (ms) between successive Event triggers. |
+| **Keyword** | A user-specified word or phrase that triggers a designated sound when encountered. |
+| **Configuration** | The complete saved parameter state for a session, shareable between users. |
+| **Literacoustics** | The capacity to interpret a text's meaning, structure, and nuance by listening to its sonification. |
+| **Live Mode** | A mode in which text is sonified in real time as the user types. |
+| **Preset** | A named, pre-configured parameter set that produces a specific sonic character without requiring manual setup. |
 
 ### Parse Levels
 
-Parse Levels are ordered from finest to coarsest granularity. Each has a distinct
-structural meaning and default sound character.
+Parse Levels are ordered from finest to coarsest granularity. All five are available at launch.
 
 | Level | Unit Definition | Default Register |
 |---|---|---|
-| `letter` | Single character, excluding whitespace | High pitch, very short duration |
+| `letter` | Single non-whitespace character | High pitch, very short duration |
 | `word` | Contiguous word characters (`\b\w+\b`) | Mid pitch, moderate duration |
-| `phrase` | Sub-sentence segment (punctuation or conjunction boundary) | Lower-mid pitch, longer duration |
+| `phrase` | Sub-sentence segment bounded by punctuation (`, ; : — –`) or subordinating/coordinating conjunction | Lower-mid pitch, longer duration |
 | `sentence` | Complete grammatical sentence | Low pitch, slow duration, triangle wave |
 | `paragraph` | Block separated by double newlines | Very low pitch, very long duration, sawtooth wave |
+
+**Letter level**: No semantic variables apply at letter level. Configurable: instrument,
+overtone series/waveform, octave range, envelope, tempo.
+
+**Word level**: The most semantically complex level. All semantic signals, keyword matching,
+WordNet category assignment, modal weighting, word frequency tier, and function-word
+handling apply at this level.
+
+**Phrase level**: Punctuation sonification and conjunction boundaries define phrase units.
+The full phrase definition is: a sub-sentence segment bounded by `, ; : — –` or
+by coordinating/subordinating conjunctions (`and, but, or, nor, yet, so, because,
+although, while, since, if`). Semantic signals apply at phrase level.
+
+**Sentence and paragraph levels**: Sentiment, energy, and genre/topic category signals
+apply. Readability and complexity metrics may be used as additional signals.
 
 ### Sound Parameters
 
@@ -142,9 +267,25 @@ target. Multiple enabled overrides compose additively.
 If active Voice count reaches `polyphony`, new Events are dropped. Timing integrity
 takes precedence over completeness.
 
+**Rule 5: Function words are never silent.**
+All words — including articles, prepositions, conjunctions, and other function words —
+MUST trigger a sound event. Function words receive neutral semantic signal values
+(sentiment = 0, energy = baseline) rather than being skipped.
+
+**Rule 6: Punctuation is sonified.**
+Punctuation marks (`.`, `,`, `!`, `?`, `;`, `:`, `—`, `–`, `(`, `)`) MUST produce
+a sound event. Their sonic character is configurable but they MUST NOT be silently
+discarded. Spaces and paragraph breaks are treated as structurally significant.
+
+**Rule 7: Keywords override.**
+When a unit matches a user-specified Keyword, the designated keyword sound MUST
+override the default mapping. Keyword sounds take precedence over all other overrides.
+
 ### Semantic System
 
-Three signals are extracted per Unit:
+Signals extracted per unit depend on the active Parse Level.
+
+#### Core Signals (all levels except letter)
 
 | Signal | Range | Source |
 |---|---|---|
@@ -152,13 +293,57 @@ Three signals are extracted per Unit:
 | `energy` | 0 to 1 | High-energy word lexicon + text length heuristic |
 | `tags` | string[] | Part-of-speech tags via `compromise` |
 
-Overrides:
+#### Extended Word-Level Signals
+
+| Signal | Range / Values | Source |
+|---|---|---|
+| `wordClass` | noun, verb, adjective, adverb, function | POS via `compromise` |
+| `wordnetCategory` | string (e.g., `animal.domestic`) | WordNet category lookup |
+| `frequencyTier` | common \| uncommon \| rare | Word frequency corpus |
+| `wordLength` | integer ≥ 1 | Character count |
+| `modalStrength` | 0–1 | Modal verb scale (see below) |
+| `isKeyword` | boolean | User-specified keyword match |
+
+#### Modal Verb Weighting Scale
+
+Modal verbs are arranged on a 0–1 strength scale:
+
+| Strength | Modals |
+|---|---|
+| 0.1–0.2 | could, might |
+| 0.3–0.4 | can, may |
+| 0.5–0.6 | would, should |
+| 0.7–0.8 | will, shall |
+| 0.9–1.0 | must, ought |
+
+#### Semantic Overrides
 
 | Override | Scope | Effect |
 |---|---|---|
 | `sentimentToPitch` | Sound Params | Blends pitch toward range top (positive) or bottom (negative) |
 | `energyToFilterCutoff` | Sound Params | Opens filter for high-energy; closes for calm |
 | `energyToTempo` | Playback timing only | Shortens inter-event interval for high-energy; stretches for calm |
+| `wordnetToInstrument` | Sound Params | Maps WordNet category to instrument preset |
+| `frequencyTierToGain` | Sound Params | Uncommon/rare words → higher gain (perceptual salience) |
+| `wordLengthToDuration` | Sound Params | Longer words → longer duration |
+| `modalStrengthToPitch` | Sound Params | Stronger modals → higher pitch within range |
+| `keywordTrigger` | Sound Params | Keyword match → designated sound override |
+
+#### Configuration Scope
+
+Each semantic override is independently toggled per parse level. Users MUST be able to
+configure which WordNet categories map to which sonic properties (e.g., "domestic animals →
+instrument preset: Strings; pitch range: 200–400 Hz"). The mapping table MUST be editable.
+
+### Output Formats
+
+| Format | Priority | Description |
+|---|---|---|
+| `.wav` | Primary — REQUIRED | Full audio render of the sonified text |
+| `.txt` | Secondary — REQUIRED | Parsed text segmented by active parse level (learning resource) |
+| `.mid` | Tertiary — OPTIONAL | MIDI event stream; for musicians to extend the sonification |
+
+All three formats MUST be exportable from the same session without re-processing.
 
 ### Parameter Validation Rules
 
@@ -167,34 +352,62 @@ Overrides:
 - `attack + release` MUST be ≤ `durationMin` (clamped silently on change)
 - `polyphony` is clamped to [1, 16]
 - `tempo` is clamped to [50, 5000] ms
+- `modalStrength` is clamped to [0, 1]
+- `frequencyTier` assignment MUST reference the same corpus across sessions for determinism
 
 ## Scope & Boundaries
 
 ### Identity
 
-**singling-lab** is a text-to-sound transduction instrument. It converts written
-language into non-phonetic audio events triggered by the structural and semantic
-properties of text — not by pronunciation. It reads text as a scored performance
-and renders that performance in sound.
+**singling-lab** is the web-based successor to Singling 1.0. It is a text-to-sound
+transduction instrument that converts written language into non-phonetic audio events
+triggered by the structural and semantic properties of text — not by pronunciation.
+It reads text as a scored performance and renders that performance in sound,
+targeting literacoustics: the interpretive capacity of the listener.
 
 ### What This System Is Not
 
-- Not a text-to-speech engine
+- Not a text-to-speech engine (though TTS is an optional accessibility feature)
 - Not a music notation system
 - Not a random noise generator (all sound is causally derived from text)
-- Not a phoneme synthesizer
-- Not a MIDI sequencer (MIDI export is a candidate future feature)
+- Not a phoneme synthesizer in its core instrument
 - Not a generative AI system
+- Not a replacement for human musical or analytical judgment
+
+### What This System Is
+
+- A research tool for language and sound analysis
+- A creative/artistic instrument for composers and writers
+- An educational tool for exploring linguistic and musical concepts
+- An accessibility tool for people with visual disabilities
+- All of the above simultaneously — these uses are complementary, not competing
+
+### Future Scope (not in current implementation)
+
+The following are acknowledged as intended future capabilities but are explicitly out
+of scope until a dedicated feature spec is ratified:
+
+- **Live Mode**: Sonification of text as the user types (real-time)
+- **Browser Plugin**: Sonify text on any web page without copy-paste
+- **Multilingual support**: Languages other than English
+- **Bold/italic semantic signal**: Formatting as a semantic modifier
+- **Simultaneous multi-level playback**: Letter + sentence events coexisting
+- **Data-sensitive / offline mode**: For users with sensitive research data
+- **Collaborative live sessions**: Real-time shared parameter editing
+- **Phonetic TTS accessibility feature**: Separate from the core instrument
 
 ### Open Questions (to be resolved)
 
-- [ ] Multi-level simultaneous playback: can letter and sentence events coexist?
+- [x] ~~Multi-level simultaneous playback~~ → Deferred; toggle-between-levels is the v1 model
 - [ ] Visualization: how should active units be highlighted in the input text?
 - [ ] Pitch quantization: should frequencies snap to musical scales, or stay continuous?
-- [ ] Semantic expansion: clause depth, tense, named entities?
-- [ ] Preset format: canonical JSON schema for saved parameter state?
-- [ ] MIDI export: can the event stream be captured and exported?
-- [ ] Phrase parser: what is the correct definition of a phrase for this instrument?
+- [x] ~~Semantic expansion~~ → Resolved: WordNet, modals, keywords, frequency tiers (see Semantic System)
+- [x] ~~Preset format~~ → Resolved: configuration must be exportable/importable (format TBD)
+- [x] ~~MIDI export~~ → Resolved: MIDI is a tertiary output format, optional
+- [x] ~~Phrase parser definition~~ → Partially resolved: punctuation + conjunction boundary (full spec pending)
+- [ ] WordNet category → sonic property mapping: what is the canonical default table?
+- [ ] Word frequency corpus: which corpus to use for `frequencyTier` assignment?
+- [ ] Configuration file format: JSON schema definition (pending Persist & Portability spec)
 
 ## Governance
 
@@ -217,4 +430,4 @@ implementation MUST be updated.
 **Compliance:** All implementation decisions MUST be checked against Core Principles
 before merging. Spec check SHOULD be run after any significant implementation session.
 
-**Version**: 1.0.0 | **Ratified**: 2026-04-10 | **Last Amended**: 2026-04-10
+**Version**: 2.0.0 | **Ratified**: 2026-04-10 | **Last Amended**: 2026-04-14

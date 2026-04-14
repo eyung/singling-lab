@@ -32,7 +32,8 @@
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
 - [ ] **I. Non-Phonetic** — Does this feature introduce any phoneme or pronunciation-based
-  mapping? If yes, it violates the constitution and must be redesigned.
+  mapping into the core instrument? Phonetic TTS is only permitted as an explicitly labelled
+  accessibility feature; any other phonetic mapping violates the constitution.
 - [ ] **III. Client-Side First** — Does this feature require server round-trips for core
   functionality (parsing, mapping, sound)? If yes, justify under Complexity Tracking.
 - [ ] **IV. Parameters Over Presets** — Are all new sonic properties exposed as
@@ -42,7 +43,15 @@
 - [ ] **VII. The Text Is Not Consumed** — Does this feature modify the source text at any
   point? If yes, it violates the constitution.
 - [ ] **VIII. No External Audio Dependencies** — Does this feature introduce any external
-  audio library? Only native Web Audio API is permitted.
+  audio library for synthesis? Only native Web Audio API is permitted for synthesis.
+  Export-only libraries (WAV/MIDI encoding) are exempt.
+- [ ] **IX. Reduce Ambiguity** — Does this feature introduce or preserve ambiguous output?
+  If the same input can produce different sound output under identical parameters, justify.
+- [ ] **X. Persist & Portability** — If this feature adds new parameters, are they included
+  in the configuration export/import schema? New state that cannot be saved violates the
+  constitution.
+- [ ] **XI. Accessibility First** — Does this feature degrade keyboard navigation, screen
+  reader compatibility, or add login requirements for core functionality? If yes, redesign.
 
 ## Project Structure
 
