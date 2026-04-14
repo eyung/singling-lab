@@ -1,6 +1,8 @@
+import { useRef, useState } from 'react'
 import type { AppParams, ParseLevel, LevelParams } from '../types'
 import { validateLevelParams, validateAppParams } from '../types'
 import { INSTRUMENT_PRESETS, applyPreset } from '../instruments'
+import { exportConfig, importConfig, resetToDefaults } from '../configStore'
 
 interface Props {
   params: AppParams
@@ -94,6 +96,9 @@ function LevelEditor({
 }
 
 export default function Controls({ params, onChange }: Props) {
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [importError, setImportError] = useState<string | null>(null)
+
   const setLevel = (level: ParseLevel, lp: LevelParams) =>
     onChange({ ...params, levels: { ...params.levels, [level]: lp } })
 
@@ -121,6 +126,52 @@ export default function Controls({ params, onChange }: Props) {
         </label>
         <Slider label="tempo (ms/unit)" min={50} max={5000} step={10} value={params.tempo} onChange={v => onChange(validateAppParams({ ...params, tempo: v }))} />
         <Slider label="polyphony" min={1} max={16} step={1} value={params.polyphony} onChange={v => onChange(validateAppParams({ ...params, polyphony: v }))} />
+        <div className="flex gap-2 pt-1">
+          <button
+            onClick={() => exportConfig(params)}
+            aria-label="Export configuration as JSON file"
+            className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs font-mono text-zinc-300 hover:border-zinc-500 transition-colors"
+          >
+            export config
+          </button>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            aria-label="Import configuration from JSON file"
+            className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs font-mono text-zinc-300 hover:border-zinc-500 transition-colors"
+          >
+            import config
+          </button>
+          <button
+            onClick={() => { setImportError(null); onChange(resetToDefaults()) }}
+            aria-label="Reset all parameters to defaults"
+            className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs font-mono text-zinc-300 hover:border-zinc-500 transition-colors"
+          >
+            reset
+          </button>
+        </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".json"
+          tabIndex={-1}
+          aria-hidden="true"
+          className="hidden"
+          onChange={async e => {
+            const file = e.target.files?.[0]
+            if (!file) return
+            e.target.value = ''
+            try {
+              const imported = await importConfig(file)
+              setImportError(null)
+              onChange(imported)
+            } catch (err) {
+              setImportError(err instanceof Error ? err.message : 'Import failed.')
+            }
+          }}
+        />
+        {importError && (
+          <p className="text-xs font-mono text-red-400">{importError}</p>
+        )}
       </section>
 
       <section className="flex flex-col gap-2">

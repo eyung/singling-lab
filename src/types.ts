@@ -63,6 +63,16 @@ export interface SemanticParams {
   energyToTempo: boolean        // high energy → shorter durations
 }
 
+// Versioned configuration file envelope (for export/import)
+export const CONFIG_VERSION = '1'
+
+export interface ConfigFile {
+  version: string
+  app: 'singling-lab'
+  exported: string      // ISO 8601 timestamp
+  params: AppParams
+}
+
 // Full user parameter state
 export interface AppParams {
   parseLevel: ParseLevel

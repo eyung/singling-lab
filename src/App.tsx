@@ -3,13 +3,14 @@ import { parseText } from './parser'
 import { buildSoundParams, SoundEngine } from './soundEngine'
 import { DEFAULT_PARAMS } from './types'
 import type { AppParams, ParseLevel } from './types'
+import { loadFromStorage, saveToStorage } from './configStore'
 import Controls from './components/Controls'
 
 const engine = new SoundEngine()
 
 export default function App() {
   const [text, setText] = useState('')
-  const [params, setParams] = useState<AppParams>(DEFAULT_PARAMS)
+  const [params, setParams] = useState<AppParams>(() => loadFromStorage() ?? DEFAULT_PARAMS)
   const [isPlaying, setIsPlaying] = useState(false)
   const [activeUnit, setActiveUnit] = useState<string | null>(null)
   const playbackRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -109,7 +110,7 @@ export default function App() {
         </div>
 
         {/* Right: parameter controls */}
-        <Controls params={params} onChange={setParams} />
+        <Controls params={params} onChange={p => { setParams(p); saveToStorage(p) }} />
       </main>
     </div>
   )
