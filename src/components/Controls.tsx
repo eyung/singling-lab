@@ -32,7 +32,7 @@ function Slider({
         step={step}
         value={value}
         onChange={e => onChange(Number(e.target.value))}
-        className="w-full accent-zinc-400"
+        className="w-full accent-zinc-500 dark:accent-zinc-400"
       />
     </label>
   )
@@ -49,19 +49,19 @@ function LevelEditor({
     onChange(validateLevelParams({ ...lp, [k]: v }))
 
   return (
-    <details className="border border-zinc-800 rounded p-3 group">
-      <summary className="cursor-pointer font-mono text-xs text-zinc-400 flex items-center gap-2 select-none">
-        <span className="text-zinc-600 group-open:rotate-90 inline-block transition-transform">▶</span>
+    <details className="border border-zinc-300 dark:border-zinc-800 rounded p-3 group">
+      <summary className="cursor-pointer font-mono text-xs text-zinc-500 dark:text-zinc-400 flex items-center gap-2 select-none">
+        <span className="text-zinc-400 dark:text-zinc-600 group-open:rotate-90 inline-block transition-transform">▶</span>
         {level}
-        {!lp.enabled && <span className="text-zinc-600">(disabled)</span>}
+        {!lp.enabled && <span className="text-zinc-400 dark:text-zinc-600">(disabled)</span>}
       </summary>
       <div className="mt-3 flex flex-col gap-3">
-        <label className="flex items-center gap-2 text-xs font-mono text-zinc-400">
+        <label className="flex items-center gap-2 text-xs font-mono text-zinc-500 dark:text-zinc-400">
           <input
             type="checkbox"
             checked={lp.enabled}
             onChange={e => set('enabled', e.target.checked)}
-            className="accent-zinc-400"
+            className="accent-zinc-500 dark:accent-zinc-400"
           />
           enabled
         </label>
@@ -83,7 +83,7 @@ function LevelEditor({
           <select
             value={lp.waveform}
             onChange={e => set('waveform', e.target.value as OscillatorType)}
-            className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs font-mono text-zinc-300"
+            className="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded px-2 py-1 text-xs font-mono text-zinc-700 dark:text-zinc-300"
           >
             {(['sine', 'triangle', 'sawtooth', 'square'] as OscillatorType[]).map(w => (
               <option key={w} value={w}>{w}</option>
@@ -105,9 +105,9 @@ export default function Controls({ params, onChange }: Props) {
   const LEVELS: ParseLevel[] = ['letter', 'word', 'phrase', 'sentence', 'paragraph']
 
   return (
-    <div className="w-1/2 overflow-y-auto p-4 flex flex-col gap-4">
+    <div className="w-1/2 overflow-y-auto p-4 flex flex-col gap-4 bg-white dark:bg-zinc-950">
       <section className="flex flex-col gap-2">
-        <h2 className="text-xs font-mono text-zinc-500 uppercase tracking-wider">Global</h2>
+        <h2 className="text-xs font-mono text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Global</h2>
         <label className="flex flex-col gap-1">
           <span className="text-xs font-mono text-zinc-500">instrument</span>
           <select
@@ -117,7 +117,7 @@ export default function Controls({ params, onChange }: Props) {
               const levels = applyPreset(id, params.levels)
               onChange(validateAppParams({ ...params, instrument: id, levels }))
             }}
-            className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs font-mono text-zinc-300"
+            className="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded px-2 py-1 text-xs font-mono text-zinc-700 dark:text-zinc-300"
           >
             {INSTRUMENT_PRESETS.map(p => (
               <option key={p.id} value={p.id}>{p.name}</option>
@@ -130,21 +130,21 @@ export default function Controls({ params, onChange }: Props) {
           <button
             onClick={() => exportConfig(params)}
             aria-label="Export configuration as JSON file"
-            className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs font-mono text-zinc-300 hover:border-zinc-500 transition-colors"
+            className="flex-1 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded px-2 py-1 text-xs font-mono text-zinc-700 dark:text-zinc-300 hover:border-zinc-500 transition-colors"
           >
             export config
           </button>
           <button
             onClick={() => fileInputRef.current?.click()}
             aria-label="Import configuration from JSON file"
-            className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs font-mono text-zinc-300 hover:border-zinc-500 transition-colors"
+            className="flex-1 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded px-2 py-1 text-xs font-mono text-zinc-700 dark:text-zinc-300 hover:border-zinc-500 transition-colors"
           >
             import config
           </button>
           <button
             onClick={() => { setImportError(null); onChange(resetToDefaults()) }}
             aria-label="Reset all parameters to defaults"
-            className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs font-mono text-zinc-300 hover:border-zinc-500 transition-colors"
+            className="flex-1 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded px-2 py-1 text-xs font-mono text-zinc-700 dark:text-zinc-300 hover:border-zinc-500 transition-colors"
           >
             reset
           </button>
@@ -170,12 +170,12 @@ export default function Controls({ params, onChange }: Props) {
           }}
         />
         {importError && (
-          <p className="text-xs font-mono text-red-400">{importError}</p>
+          <p className="text-xs font-mono text-red-600 dark:text-red-400">{importError}</p>
         )}
       </section>
 
       <section className="flex flex-col gap-2">
-        <h2 className="text-xs font-mono text-zinc-500 uppercase tracking-wider">Semantic</h2>
+        <h2 className="text-xs font-mono text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Semantic</h2>
         {(
           [
             ['sentimentToPitch', 'sentiment → pitch'],
@@ -183,12 +183,12 @@ export default function Controls({ params, onChange }: Props) {
             ['energyToTempo', 'energy → tempo'],
           ] as [keyof AppParams['semantic'], string][]
         ).map(([key, label]) => (
-          <label key={key} className="flex items-center gap-2 text-xs font-mono text-zinc-400">
+          <label key={key} className="flex items-center gap-2 text-xs font-mono text-zinc-500 dark:text-zinc-400">
             <input
               type="checkbox"
               checked={params.semantic[key]}
               onChange={e => onChange({ ...params, semantic: { ...params.semantic, [key]: e.target.checked } })}
-              className="accent-zinc-400"
+              className="accent-zinc-500 dark:accent-zinc-400"
             />
             {label}
           </label>
@@ -196,7 +196,7 @@ export default function Controls({ params, onChange }: Props) {
       </section>
 
       <section className="flex flex-col gap-2">
-        <h2 className="text-xs font-mono text-zinc-500 uppercase tracking-wider">Levels</h2>
+        <h2 className="text-xs font-mono text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Levels</h2>
         {LEVELS.map(level => (
           <LevelEditor
             key={level}
