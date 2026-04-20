@@ -13,6 +13,37 @@ export interface InstrumentPreset {
   gain: number            // 0–1
 }
 
+// A sound character — covers oscillator-based timbres and noise-based environmental sounds
+export interface SoundCharacter {
+  id: string
+  name: string
+  category: 'synthesis' | 'nature' | 'city' | 'environment'
+  percussive: boolean
+  attack: number          // seconds
+  release: number         // seconds
+  filterCutoff: number    // Hz — primary lowpass cutoff
+  filterQ: number
+  gain: number            // 0–1 base gain
+  source: 'oscillator' | 'noise'
+  // oscillator-only fields:
+  waveform?: OscillatorType
+  // noise-only fields:
+  noiseColor?: 'white' | 'pink'
+  noiseFilterType?: BiquadFilterType
+  noiseFilterFreq?: number  // Hz — noise-shaping filter frequency
+}
+
+// The four parse levels that participate in layered mode
+export type LayeredLevel = 'word' | 'phrase' | 'sentence' | 'paragraph'
+export const LAYERED_LEVELS: readonly LayeredLevel[] = ['word', 'phrase', 'sentence', 'paragraph']
+
+// Per-level configuration for layered playback mode
+export interface LayeredLevelConfig {
+  soundCharacterId: string
+  gain: number    // 0–1
+  enabled: boolean
+}
+
 // Semantic signals extracted from text
 export interface SemanticSignal {
   sentiment: number       // -1 (negative) to 1 (positive)
@@ -81,6 +112,8 @@ export interface AppParams {
   polyphony: number             // max simultaneous voices
   tempo: number                 // ms between units (base)
   instrument: string            // ID of last-applied InstrumentPreset
+  mode: 'single' | 'layered'   // playback mode
+  layered: Record<LayeredLevel, LayeredLevelConfig>
 }
 
 // Clamp a number to [min, max]
@@ -112,12 +145,26 @@ export function validateLevelParams(lp: LevelParams): LevelParams {
   }
 }
 
+// Validate a LayeredLevelConfig; clamp gain, ensure soundCharacterId is non-empty
+export function validateLayeredLevelConfig(llc: LayeredLevelConfig): LayeredLevelConfig {
+  return {
+    ...llc,
+    soundCharacterId: llc.soundCharacterId || 'default',
+    gain: clamp(llc.gain, 0, 1),
+  }
+}
+
 // Enforce global param bounds
 export function validateAppParams(p: AppParams): AppParams {
+  const layered = Object.fromEntries(
+    LAYERED_LEVELS.map(level => [level, validateLayeredLevelConfig(p.layered[level])])
+  ) as Record<LayeredLevel, LayeredLevelConfig>
   return {
     ...p,
     polyphony: clamp(Math.round(p.polyphony), 1, 16),
     tempo: clamp(p.tempo, 50, 5000),
+    mode: p.mode === 'layered' ? 'layered' : 'single',
+    layered,
   }
 }
 
@@ -133,6 +180,13 @@ export const DEFAULT_LEVEL_PARAMS: LevelParams = {
   filterCutoff: 2000,
   filterQ: 1,
   gain: 0.4,
+}
+
+export const DEFAULT_LAYERED_PARAMS: Record<LayeredLevel, LayeredLevelConfig> = {
+  word:      { soundCharacterId: 'pluck',   gain: 0.70, enabled: true },
+  phrase:    { soundCharacterId: 'pad',     gain: 0.42, enabled: true },
+  sentence:  { soundCharacterId: 'strings', gain: 0.22, enabled: true },
+  paragraph: { soundCharacterId: 'ocean',   gain: 0.10, enabled: true },
 }
 
 export const DEFAULT_PARAMS: AppParams = {
@@ -152,4 +206,6 @@ export const DEFAULT_PARAMS: AppParams = {
   },
   polyphony: 4,
   tempo: 300,
+  mode: 'single',
+  layered: { ...DEFAULT_LAYERED_PARAMS },
 }

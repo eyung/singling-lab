@@ -1,5 +1,5 @@
 import type { AppParams, ConfigFile } from './types'
-import { DEFAULT_PARAMS, CONFIG_VERSION, validateAppParams, validateLevelParams } from './types'
+import { DEFAULT_PARAMS, CONFIG_VERSION, validateAppParams, validateLevelParams, validateLayeredLevelConfig, LAYERED_LEVELS } from './types'
 
 const STORAGE_KEY = 'singling-lab:params'
 const PARSE_LEVELS = ['letter', 'word', 'phrase', 'sentence', 'paragraph'] as const
@@ -57,6 +57,27 @@ export function validateConfig(raw: unknown): AppParams | null {
     })
   ) as AppParams['levels']
 
+  // Validate mode field (default 'single' for backward compatibility)
+  const mode: AppParams['mode'] = p['mode'] === 'layered' ? 'layered' : 'single'
+
+  // Validate layered field (backward compatible — missing levels fall back to defaults)
+  const layeredRaw = (typeof p['layered'] === 'object' && p['layered'] !== null)
+    ? p['layered'] as Record<string, unknown>
+    : {}
+  const layered = Object.fromEntries(
+    LAYERED_LEVELS.map(level => {
+      const l = (typeof layeredRaw[level] === 'object' && layeredRaw[level] !== null)
+        ? layeredRaw[level] as Record<string, unknown>
+        : {}
+      const def = d.layered[level]
+      return [level, validateLayeredLevelConfig({
+        soundCharacterId: typeof l['soundCharacterId'] === 'string' ? l['soundCharacterId'] : def.soundCharacterId,
+        gain:    typeof l['gain'] === 'number' ? l['gain'] : def.gain,
+        enabled: typeof l['enabled'] === 'boolean' ? l['enabled'] : def.enabled,
+      })]
+    })
+  ) as AppParams['layered']
+
   return validateAppParams({
     parseLevel,
     instrument: typeof p['instrument'] === 'string' ? p['instrument'] : d.instrument,
@@ -64,6 +85,8 @@ export function validateConfig(raw: unknown): AppParams | null {
     tempo:      typeof p['tempo'] === 'number' ? p['tempo'] : d.tempo,
     semantic,
     levels,
+    mode,
+    layered,
   })
 }
 

@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react'
-import type { AppParams, ParseLevel, LevelParams } from '../types'
-import { validateLevelParams, validateAppParams } from '../types'
+import type { AppParams, ParseLevel, LevelParams, LayeredLevel, LayeredLevelConfig } from '../types'
+import { validateLevelParams, validateAppParams, validateLayeredLevelConfig, LAYERED_LEVELS } from '../types'
 import { INSTRUMENT_PRESETS, applyPreset } from '../instruments'
 import { exportConfig, importConfig, resetToDefaults } from '../configStore'
+import { getAllCharacters, getBackdropCharacters } from '../soundCharacters'
 
 interface Props {
   params: AppParams
@@ -95,12 +96,68 @@ function LevelEditor({
   )
 }
 
+function LayeredLevelEditor({
+  level, config, onChange
+}: {
+  level: LayeredLevel
+  config: LayeredLevelConfig
+  onChange: (c: LayeredLevelConfig) => void
+}) {
+  const isBackdrop = level !== 'word'
+  const characters = isBackdrop ? getBackdropCharacters() : getAllCharacters()
+
+  const set = (update: Partial<LayeredLevelConfig>) =>
+    onChange(validateLayeredLevelConfig({ ...config, ...update }))
+
+  return (
+    <details className="border border-zinc-300 dark:border-zinc-800 rounded p-3 group">
+      <summary className="cursor-pointer font-mono text-xs text-zinc-500 dark:text-zinc-400 flex items-center gap-2 select-none">
+        <span className="text-zinc-400 dark:text-zinc-600 group-open:rotate-90 inline-block transition-transform">▶</span>
+        {level}
+        {isBackdrop && <span className="text-zinc-400 dark:text-zinc-600 text-xs">(backdrop)</span>}
+        {!config.enabled && <span className="text-zinc-400 dark:text-zinc-600">(disabled)</span>}
+      </summary>
+      <div className="mt-3 flex flex-col gap-3">
+        <label className="flex items-center gap-2 text-xs font-mono text-zinc-500 dark:text-zinc-400">
+          <input
+            type="checkbox"
+            checked={config.enabled}
+            onChange={e => set({ enabled: e.target.checked })}
+            className="accent-zinc-500 dark:accent-zinc-400"
+          />
+          enabled
+        </label>
+
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-mono text-zinc-500 dark:text-zinc-500">sound character</span>
+          <select
+            value={config.soundCharacterId}
+            onChange={e => set({ soundCharacterId: e.target.value })}
+            className="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded px-2 py-1 text-xs font-mono text-zinc-700 dark:text-zinc-300"
+          >
+            {characters.map(c => (
+              <option key={c.id} value={c.id}>
+                {c.name} ({c.category})
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <Slider label="gain" min={0} max={1} value={config.gain} onChange={v => set({ gain: v })} />
+      </div>
+    </details>
+  )
+}
+
 export default function Controls({ params, onChange }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [importError, setImportError] = useState<string | null>(null)
 
   const setLevel = (level: ParseLevel, lp: LevelParams) =>
     onChange({ ...params, levels: { ...params.levels, [level]: lp } })
+
+  const setLayeredLevel = (level: LayeredLevel, config: LayeredLevelConfig) =>
+    onChange({ ...params, layered: { ...params.layered, [level]: config } })
 
   const LEVELS: ParseLevel[] = ['letter', 'word', 'phrase', 'sentence', 'paragraph']
 
@@ -109,7 +166,7 @@ export default function Controls({ params, onChange }: Props) {
       <section className="flex flex-col gap-2">
         <h2 className="text-xs font-mono text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Global</h2>
         <label className="flex flex-col gap-1">
-          <span className="text-xs font-mono text-zinc-500">instrument</span>
+          <span className="text-xs font-mono text-zinc-500 dark:text-zinc-500">instrument</span>
           <select
             value={params.instrument}
             onChange={e => {
@@ -124,6 +181,28 @@ export default function Controls({ params, onChange }: Props) {
             ))}
           </select>
         </label>
+
+        {/* Mode toggle */}
+        <div className="flex flex-col gap-1">
+          <span className="text-xs font-mono text-zinc-500 dark:text-zinc-500">mode</span>
+          <div className="flex gap-2">
+            {(['single', 'layered'] as const).map(m => (
+              <button
+                key={m}
+                onClick={() => onChange(validateAppParams({ ...params, mode: m }))}
+                aria-label={m === 'single' ? 'Switch to single-level playback mode' : 'Switch to layered playback mode'}
+                className={`flex-1 px-2 py-1 rounded text-xs font-mono border transition-colors ${
+                  params.mode === m
+                    ? 'bg-zinc-800 dark:bg-zinc-200 text-zinc-100 dark:text-zinc-900 border-zinc-800 dark:border-zinc-200'
+                    : 'bg-transparent text-zinc-500 dark:text-zinc-400 border-zinc-300 dark:border-zinc-700 hover:border-zinc-500'
+                }`}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <Slider label="tempo (ms/unit)" min={50} max={5000} step={10} value={params.tempo} onChange={v => onChange(validateAppParams({ ...params, tempo: v }))} />
         <Slider label="polyphony" min={1} max={16} step={1} value={params.polyphony} onChange={v => onChange(validateAppParams({ ...params, polyphony: v }))} />
         <div className="flex gap-2 pt-1">
@@ -173,6 +252,21 @@ export default function Controls({ params, onChange }: Props) {
           <p className="text-xs font-mono text-red-600 dark:text-red-400">{importError}</p>
         )}
       </section>
+
+      {/* Layered Levels section — only visible in layered mode */}
+      {params.mode === 'layered' && (
+        <section className="flex flex-col gap-2">
+          <h2 className="text-xs font-mono text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Layered Levels</h2>
+          {LAYERED_LEVELS.map(level => (
+            <LayeredLevelEditor
+              key={level}
+              level={level}
+              config={params.layered[level]}
+              onChange={config => setLayeredLevel(level, config)}
+            />
+          ))}
+        </section>
+      )}
 
       <section className="flex flex-col gap-2">
         <h2 className="text-xs font-mono text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Semantic</h2>
