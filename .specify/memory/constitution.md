@@ -1,6 +1,31 @@
 <!--
 SYNC IMPACT REPORT
 ==================
+Version change:   2.0.0 → 2.1.0  [MINOR — amended Principle V to recognise layered mode;
+                                   new vocabulary terms; Future Scope item resolved;
+                                   Open Question resolved]
+Run date:         2026-04-20
+
+Modified principles:
+  - V. Structural Levels: amended to recognise `layered` as a supported first-class
+    playback mode alongside `single`; the original "one level at a time" rule now
+    applies within single mode only
+
+Added vocabulary terms:
+  - Layered Mode, Sound Character, Layer Config, Backdrop Level
+
+Resolved Future Scope items:
+  - Simultaneous multi-level playback → implemented in 005-audio-layering
+
+Resolved Open Questions:
+  - Multi-level simultaneous playback → resolved; layered mode is now live
+
+Template sync status:
+  ✅ No template changes required for this amendment.
+
+---
+
+Previous report (2.0.0):
 Version change:   1.0.0 → 2.0.0  [MAJOR — new principles, amended principles, new vocabulary,
                                    expanded semantic system, resolved open questions]
 Run date:         2026-04-14
@@ -124,13 +149,30 @@ could reasonably vary.
 Presets are a starting point, not a ceiling.
 
 ### V. Structural Levels Are Orthogonal
-Only one Parse Level is active at a time. Levels MUST NOT stack or nest during
-playback. Multi-level simultaneous layering is deferred and will only be introduced
-as an explicitly scoped feature. Disabling a level silences it but preserves its
-timing slot in the playback sequence.
+Two playback modes are supported: **single** and **layered**.
 
-**Toggling**: The user MUST be able to switch seamlessly between parse levels
-(paragraph → sentence → phrase → word → letter) without restarting the session.
+**Single mode** (default): Only one Parse Level is active at a time. Levels MUST
+NOT stack or nest. Disabling a level silences it but preserves its timing slot in
+the playback sequence. The user MUST be able to switch seamlessly between parse
+levels (paragraph → sentence → phrase → word → letter) without restarting the
+session.
+
+**Layered mode**: Word, phrase, sentence, and paragraph levels sonify simultaneously
+from the same input text, each with an independent instrument, gain, and enabled
+state. The letter level does not participate in layered mode. The following
+constraints apply in layered mode:
+
+- Gain hierarchy MUST be enforced: word is the most prominent (loudest foreground);
+  paragraph is the quietest (deepest backdrop). Default gains: word 0.70,
+  phrase 0.42, sentence 0.22, paragraph 0.10.
+- **Backdrop levels** (phrase, sentence, paragraph) MUST only use non-percussive
+  sound characters. Percussive sounds are restricted to the word level.
+- All simultaneous voices MUST be routed through a master limiter to prevent
+  clipping.
+- Pitch quantisation to a shared musical scale (default: C major) MUST be applied
+  across all layers to ensure harmoniousness.
+- Any layer with no parsed units for the current input MUST remain silent without
+  error.
 
 ### VI. Silence Is Valid
 An empty segment, a unit that fails voice-steal, or a disabled level are all
@@ -205,6 +247,10 @@ not an afterthought.
 | **Literacoustics** | The capacity to interpret a text's meaning, structure, and nuance by listening to its sonification. |
 | **Live Mode** | A mode in which text is sonified in real time as the user types. |
 | **Preset** | A named, pre-configured parameter set that produces a specific sonic character without requiring manual setup. |
+| **Layered Mode** | A playback mode in which word, phrase, sentence, and paragraph levels sonify simultaneously from the same input text. |
+| **Sound Character** | An abstraction representing any playable timbre — covers both oscillator-based synthesis presets and noise-based environmental textures. Has a `percussive` flag and a category (synthesis, nature, city, environment). |
+| **Layer Config** | The per-level settings in layered mode: sound character selection, gain, and enabled state. |
+| **Backdrop Level** | A parse level in layered mode (phrase, sentence, or paragraph) that functions as sustained ambient texture; restricted to non-percussive sound characters. |
 
 ### Parse Levels
 
@@ -391,16 +437,16 @@ of scope until a dedicated feature spec is ratified:
 - **Browser Plugin**: Sonify text on any web page without copy-paste
 - **Multilingual support**: Languages other than English
 - **Bold/italic semantic signal**: Formatting as a semantic modifier
-- **Simultaneous multi-level playback**: Letter + sentence events coexisting
+- ~~**Simultaneous multi-level playback**~~: ✅ Implemented in `005-audio-layering` — layered mode (word/phrase/sentence/paragraph simultaneously) is now a supported first-class playback mode (see Principle V)
 - **Data-sensitive / offline mode**: For users with sensitive research data
 - **Collaborative live sessions**: Real-time shared parameter editing
 - **Phonetic TTS accessibility feature**: Separate from the core instrument
 
 ### Open Questions (to be resolved)
 
-- [x] ~~Multi-level simultaneous playback~~ → Deferred; toggle-between-levels is the v1 model
+- [x] ~~Multi-level simultaneous playback~~ → Resolved; implemented in `005-audio-layering` as `layered` mode (word/phrase/sentence/paragraph simultaneously, with gain hierarchy, C major quantisation, and backdrop constraints)
 - [ ] Visualization: how should active units be highlighted in the input text?
-- [ ] Pitch quantization: should frequencies snap to musical scales, or stay continuous?
+- [x] ~~Pitch quantization~~ → Resolved; continuous in single mode; C major quantisation applied in layered mode for harmoniousness
 - [x] ~~Semantic expansion~~ → Resolved: WordNet, modals, keywords, frequency tiers (see Semantic System)
 - [x] ~~Preset format~~ → Resolved: configuration must be exportable/importable (format TBD)
 - [x] ~~MIDI export~~ → Resolved: MIDI is a tertiary output format, optional
@@ -430,4 +476,4 @@ implementation MUST be updated.
 **Compliance:** All implementation decisions MUST be checked against Core Principles
 before merging. Spec check SHOULD be run after any significant implementation session.
 
-**Version**: 2.0.0 | **Ratified**: 2026-04-10 | **Last Amended**: 2026-04-14
+**Version**: 2.1.0 | **Ratified**: 2026-04-10 | **Last Amended**: 2026-04-20
