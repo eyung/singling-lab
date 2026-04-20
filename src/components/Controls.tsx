@@ -4,39 +4,21 @@ import { validateLevelParams, validateAppParams, validateLayeredLevelConfig, LAY
 import { INSTRUMENT_PRESETS, applyPreset } from '../instruments'
 import { exportConfig, importConfig, resetToDefaults } from '../configStore'
 import { getAllCharacters, getBackdropCharacters } from '../soundCharacters'
+import LedBar from './LedBar'
+import Rocker from './Rocker'
+import Toggle from './Toggle'
+import VuMeter from './VuMeter'
+
+type Tab = 'global' | 'levels' | 'layered' | 'semantic'
+
+const PARSE_LEVELS: readonly ParseLevel[] = ['letter', 'word', 'phrase', 'sentence', 'paragraph']
+const MODES = ['single', 'layered'] as const
 
 interface Props {
   params: AppParams
   onChange: (p: AppParams) => void
-}
-
-function Slider({
-  label, min, max, step = 0.01, value, onChange
-}: {
-  label: string
-  min: number
-  max: number
-  step?: number
-  value: number
-  onChange: (v: number) => void
-}) {
-  return (
-    <label className="flex flex-col gap-1">
-      <div className="flex justify-between text-xs text-zinc-500 font-mono">
-        <span>{label}</span>
-        <span>{value.toFixed(step < 1 ? 2 : 0)}</span>
-      </div>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={e => onChange(Number(e.target.value))}
-        className="w-full accent-zinc-500 dark:accent-zinc-400"
-      />
-    </label>
-  )
+  isPlaying: boolean
+  tick: number
 }
 
 function LevelEditor({
@@ -50,47 +32,43 @@ function LevelEditor({
     onChange(validateLevelParams({ ...lp, [k]: v }))
 
   return (
-    <details className="border border-zinc-300 dark:border-zinc-800 rounded p-3 group">
-      <summary className="cursor-pointer font-mono text-xs text-zinc-500 dark:text-zinc-400 flex items-center gap-2 select-none">
-        <span className="text-zinc-400 dark:text-zinc-600 group-open:rotate-90 inline-block transition-transform">▶</span>
-        {level}
-        {!lp.enabled && <span className="text-zinc-400 dark:text-zinc-600">(disabled)</span>}
+    <details className="osc-acc" open={level === 'word'}>
+      <summary>
+        <span className="osc-acc__tri">▶</span>
+        <span style={{ flex: 1 }}>{level}</span>
+        <span
+          className="osc-led"
+          style={{
+            background: lp.enabled ? 'var(--phosphor)' : '#2a201a',
+            boxShadow: lp.enabled ? '0 0 4px var(--phosphor-glow)' : 'inset 0 0 2px rgba(0,0,0,.6)',
+          }}
+        />
       </summary>
-      <div className="mt-3 flex flex-col gap-3">
-        <label className="flex items-center gap-2 text-xs font-mono text-zinc-500 dark:text-zinc-400">
-          <input
-            type="checkbox"
-            checked={lp.enabled}
-            onChange={e => set('enabled', e.target.checked)}
-            className="accent-zinc-500 dark:accent-zinc-400"
-          />
-          enabled
-        </label>
-
-        <div className="grid grid-cols-2 gap-2">
-          <Slider label="pitch min (Hz)" min={20} max={2000} step={1} value={lp.pitchMin} onChange={v => set('pitchMin', v)} />
-          <Slider label="pitch max (Hz)" min={20} max={4000} step={1} value={lp.pitchMax} onChange={v => set('pitchMax', v)} />
-          <Slider label="dur min (s)" min={0.01} max={4} value={lp.durationMin} onChange={v => set('durationMin', v)} />
-          <Slider label="dur max (s)" min={0.01} max={8} value={lp.durationMax} onChange={v => set('durationMax', v)} />
-          <Slider label="attack (s)" min={0.001} max={2} value={lp.attack} onChange={v => set('attack', v)} />
-          <Slider label="release (s)" min={0.01} max={4} value={lp.release} onChange={v => set('release', v)} />
-          <Slider label="filter cutoff (Hz)" min={20} max={10000} step={1} value={lp.filterCutoff} onChange={v => set('filterCutoff', v)} />
-          <Slider label="filter Q" min={0.1} max={20} value={lp.filterQ} onChange={v => set('filterQ', v)} />
-          <Slider label="gain" min={0} max={1} value={lp.gain} onChange={v => set('gain', v)} />
-        </div>
-
-        <label className="flex flex-col gap-1">
-          <span className="text-xs font-mono text-zinc-500">waveform</span>
+      <div className="osc-acc__body">
+        <Toggle label="enabled" checked={lp.enabled} onChange={v => set('enabled', v)} />
+        <label>
+          <span className="osc-sel-label">waveform</span>
           <select
+            className="osc-sel"
             value={lp.waveform}
             onChange={e => set('waveform', e.target.value as OscillatorType)}
-            className="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded px-2 py-1 text-xs font-mono text-zinc-700 dark:text-zinc-300"
           >
             {(['sine', 'triangle', 'sawtooth', 'square'] as OscillatorType[]).map(w => (
               <option key={w} value={w}>{w}</option>
             ))}
           </select>
         </label>
+        <div className="osc-grid-2">
+          <LedBar label="pitch min" min={20} max={2000} step={1} unit="hz" value={lp.pitchMin} onChange={v => set('pitchMin', v)} />
+          <LedBar label="pitch max" min={20} max={4000} step={1} unit="hz" value={lp.pitchMax} onChange={v => set('pitchMax', v)} />
+          <LedBar label="dur min" min={0.01} max={4} step={0.01} unit="s" value={lp.durationMin} onChange={v => set('durationMin', v)} />
+          <LedBar label="dur max" min={0.01} max={8} step={0.01} unit="s" value={lp.durationMax} onChange={v => set('durationMax', v)} />
+          <LedBar label="attack" min={0.001} max={2} step={0.01} unit="s" value={lp.attack} onChange={v => set('attack', v)} />
+          <LedBar label="release" min={0.01} max={4} step={0.01} unit="s" value={lp.release} onChange={v => set('release', v)} />
+          <LedBar label="cutoff" min={20} max={10000} step={1} unit="hz" value={lp.filterCutoff} onChange={v => set('filterCutoff', v)} />
+          <LedBar label="res (q)" min={0.1} max={20} step={0.1} value={lp.filterQ} onChange={v => set('filterQ', v)} />
+        </div>
+        <LedBar label="gain" min={0} max={1} step={0.01} value={lp.gain} onChange={v => set('gain', v)} />
       </div>
     </details>
   )
@@ -105,53 +83,48 @@ function LayeredLevelEditor({
 }) {
   const isBackdrop = level !== 'word'
   const characters = isBackdrop ? getBackdropCharacters() : getAllCharacters()
-
   const set = (update: Partial<LayeredLevelConfig>) =>
     onChange(validateLayeredLevelConfig({ ...config, ...update }))
 
   return (
-    <details className="border border-zinc-300 dark:border-zinc-800 rounded p-3 group">
-      <summary className="cursor-pointer font-mono text-xs text-zinc-500 dark:text-zinc-400 flex items-center gap-2 select-none">
-        <span className="text-zinc-400 dark:text-zinc-600 group-open:rotate-90 inline-block transition-transform">▶</span>
-        {level}
-        {isBackdrop && <span className="text-zinc-400 dark:text-zinc-600 text-xs">(backdrop)</span>}
-        {!config.enabled && <span className="text-zinc-400 dark:text-zinc-600">(disabled)</span>}
+    <details className="osc-acc" open={level === 'word'}>
+      <summary>
+        <span className="osc-acc__tri">▶</span>
+        <span style={{ flex: 1 }}>
+          {level}{isBackdrop ? ' · backdrop' : ''}
+        </span>
+        <span
+          className="osc-led"
+          style={{
+            background: config.enabled ? 'var(--amber)' : '#2a201a',
+            boxShadow: config.enabled ? '0 0 4px rgba(255,179,71,.5)' : 'inset 0 0 2px rgba(0,0,0,.6)',
+          }}
+        />
       </summary>
-      <div className="mt-3 flex flex-col gap-3">
-        <label className="flex items-center gap-2 text-xs font-mono text-zinc-500 dark:text-zinc-400">
-          <input
-            type="checkbox"
-            checked={config.enabled}
-            onChange={e => set({ enabled: e.target.checked })}
-            className="accent-zinc-500 dark:accent-zinc-400"
-          />
-          enabled
-        </label>
-
-        <label className="flex flex-col gap-1">
-          <span className="text-xs font-mono text-zinc-500 dark:text-zinc-500">sound character</span>
+      <div className="osc-acc__body">
+        <Toggle label="enabled" checked={config.enabled} onChange={v => set({ enabled: v })} />
+        <label>
+          <span className="osc-sel-label">sound character</span>
           <select
+            className="osc-sel"
             value={config.soundCharacterId}
             onChange={e => set({ soundCharacterId: e.target.value })}
-            className="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded px-2 py-1 text-xs font-mono text-zinc-700 dark:text-zinc-300"
           >
             {characters.map(c => (
-              <option key={c.id} value={c.id}>
-                {c.name} ({c.category})
-              </option>
+              <option key={c.id} value={c.id}>{c.name} ({c.category})</option>
             ))}
           </select>
         </label>
-
-        <Slider label="gain" min={0} max={1} value={config.gain} onChange={v => set({ gain: v })} />
+        <LedBar label="gain" min={0} max={1} step={0.01} value={config.gain} onChange={v => set({ gain: v })} />
       </div>
     </details>
   )
 }
 
-export default function Controls({ params, onChange }: Props) {
+export default function Controls({ params, onChange, isPlaying, tick }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [importError, setImportError] = useState<string | null>(null)
+  const [tab, setTab] = useState<Tab>('global')
 
   const setLevel = (level: ParseLevel, lp: LevelParams) =>
     onChange({ ...params, levels: { ...params.levels, [level]: lp } })
@@ -159,147 +132,204 @@ export default function Controls({ params, onChange }: Props) {
   const setLayeredLevel = (level: LayeredLevel, config: LayeredLevelConfig) =>
     onChange({ ...params, layered: { ...params.layered, [level]: config } })
 
-  const LEVELS: ParseLevel[] = ['letter', 'word', 'phrase', 'sentence', 'paragraph']
+  const TABS: Tab[] = ['global', 'levels', 'layered', 'semantic']
 
   return (
-    <div className="w-1/2 overflow-y-auto p-4 flex flex-col gap-4 bg-white dark:bg-zinc-950">
-      <section className="flex flex-col gap-2">
-        <h2 className="text-xs font-mono text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Global</h2>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs font-mono text-zinc-500 dark:text-zinc-500">instrument</span>
-          <select
-            value={params.instrument}
-            onChange={e => {
-              const id = e.target.value
-              const levels = applyPreset(id, params.levels)
-              onChange(validateAppParams({ ...params, instrument: id, levels }))
-            }}
-            className="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded px-2 py-1 text-xs font-mono text-zinc-700 dark:text-zinc-300"
+    <div className="osc-right">
+      {/* Tab bar */}
+      <div className="osc-tabs" role="tablist">
+        {TABS.map(t => (
+          <button
+            key={t}
+            role="tab"
+            aria-selected={tab === t}
+            aria-controls={`panel-${t}`}
+            className={`osc-tab${tab === t ? ' osc-tab--on' : ''}`}
+            onClick={() => setTab(t)}
           >
-            {INSTRUMENT_PRESETS.map(p => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
-        </label>
+            {t}
+          </button>
+        ))}
+      </div>
 
-        {/* Mode toggle */}
-        <div className="flex flex-col gap-1">
-          <span className="text-xs font-mono text-zinc-500 dark:text-zinc-500">mode</span>
-          <div className="flex gap-2">
-            {(['single', 'layered'] as const).map(m => (
-              <button
-                key={m}
-                onClick={() => onChange(validateAppParams({ ...params, mode: m }))}
-                aria-label={m === 'single' ? 'Switch to single-level playback mode' : 'Switch to layered playback mode'}
-                className={`flex-1 px-2 py-1 rounded text-xs font-mono border transition-colors ${
-                  params.mode === m
-                    ? 'bg-zinc-800 dark:bg-zinc-200 text-zinc-100 dark:text-zinc-900 border-zinc-800 dark:border-zinc-200'
-                    : 'bg-transparent text-zinc-500 dark:text-zinc-400 border-zinc-300 dark:border-zinc-700 hover:border-zinc-500'
-                }`}
-              >
-                {m}
-              </button>
-            ))}
-          </div>
-        </div>
+      {/* Tab panels */}
+      <div
+        id={`panel-${tab}`}
+        role="tabpanel"
+        tabIndex={0}
+        className="osc-tabpane"
+      >
+        {/* ── GLOBAL ── */}
+        {tab === 'global' && (
+          <>
+            <div className="osc-group">
+              <div className="osc-group__h">transport & voice</div>
+              <div className="osc-group__body">
+                <label>
+                  <span className="osc-sel-label">instrument</span>
+                  <select
+                    className="osc-sel"
+                    value={params.instrument}
+                    onChange={e => {
+                      const id = e.target.value
+                      const levels = applyPreset(id, params.levels)
+                      onChange(validateAppParams({ ...params, instrument: id, levels }))
+                    }}
+                  >
+                    {INSTRUMENT_PRESETS.map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <div>
+                  <span className="osc-sel-label">mode</span>
+                  <Rocker
+                    value={params.mode}
+                    options={MODES}
+                    onChange={v => onChange(validateAppParams({ ...params, mode: v as 'single' | 'layered' }))}
+                  />
+                </div>
+                <div>
+                  <span className="osc-sel-label">parse level</span>
+                  <Rocker
+                    value={params.parseLevel}
+                    options={PARSE_LEVELS}
+                    onChange={v => onChange(validateAppParams({ ...params, parseLevel: v as ParseLevel }))}
+                  />
+                </div>
+              </div>
+            </div>
 
-        <Slider label="tempo (ms/unit)" min={50} max={5000} step={10} value={params.tempo} onChange={v => onChange(validateAppParams({ ...params, tempo: v }))} />
-        <Slider label="polyphony" min={1} max={16} step={1} value={params.polyphony} onChange={v => onChange(validateAppParams({ ...params, polyphony: v }))} />
-        <div className="flex gap-2 pt-1">
-          <button
-            onClick={() => exportConfig(params)}
-            aria-label="Export configuration as JSON file"
-            className="flex-1 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded px-2 py-1 text-xs font-mono text-zinc-700 dark:text-zinc-300 hover:border-zinc-500 transition-colors"
-          >
-            export config
-          </button>
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            aria-label="Import configuration from JSON file"
-            className="flex-1 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded px-2 py-1 text-xs font-mono text-zinc-700 dark:text-zinc-300 hover:border-zinc-500 transition-colors"
-          >
-            import config
-          </button>
-          <button
-            onClick={() => { setImportError(null); onChange(resetToDefaults()) }}
-            aria-label="Reset all parameters to defaults"
-            className="flex-1 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded px-2 py-1 text-xs font-mono text-zinc-700 dark:text-zinc-300 hover:border-zinc-500 transition-colors"
-          >
-            reset
-          </button>
-        </div>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".json"
-          tabIndex={-1}
-          aria-hidden="true"
-          className="hidden"
-          onChange={async e => {
-            const file = e.target.files?.[0]
-            if (!file) return
-            e.target.value = ''
-            try {
-              const imported = await importConfig(file)
-              setImportError(null)
-              onChange(imported)
-            } catch (err) {
-              setImportError(err instanceof Error ? err.message : 'Import failed.')
-            }
-          }}
-        />
-        {importError && (
-          <p className="text-xs font-mono text-red-600 dark:text-red-400">{importError}</p>
+            <div className="osc-group">
+              <div className="osc-group__h">timing</div>
+              <div className="osc-group__body">
+                <LedBar label="tempo" min={50} max={5000} step={10} unit="ms" value={params.tempo} onChange={v => onChange(validateAppParams({ ...params, tempo: v }))} />
+                <LedBar label="polyphony" min={1} max={16} step={1} value={params.polyphony} onChange={v => onChange(validateAppParams({ ...params, polyphony: v }))} />
+              </div>
+            </div>
+
+            <div className="osc-group">
+              <div className="osc-group__h">master out</div>
+              <div className="osc-group__body">
+                <VuMeter playing={isPlaying} tick={tick} />
+              </div>
+            </div>
+
+            <div className="osc-group">
+              <div className="osc-group__h">config</div>
+              <div className="osc-group__body">
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button
+                    className="osc-tb"
+                    style={{ flex: 1, fontSize: 9, letterSpacing: '.22em', textTransform: 'uppercase', padding: '8px 4px' }}
+                    onClick={() => exportConfig(params)}
+                    aria-label="Export configuration as JSON file"
+                  >
+                    export
+                  </button>
+                  <button
+                    className="osc-tb"
+                    style={{ flex: 1, fontSize: 9, letterSpacing: '.22em', textTransform: 'uppercase', padding: '8px 4px' }}
+                    onClick={() => fileInputRef.current?.click()}
+                    aria-label="Import configuration from JSON file"
+                  >
+                    import
+                  </button>
+                  <button
+                    className="osc-tb"
+                    style={{ flex: 1, fontSize: 9, letterSpacing: '.22em', textTransform: 'uppercase', padding: '8px 4px' }}
+                    onClick={() => { setImportError(null); onChange(resetToDefaults()) }}
+                    aria-label="Reset all parameters to defaults"
+                  >
+                    reset
+                  </button>
+                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".json"
+                  tabIndex={-1}
+                  aria-hidden="true"
+                  style={{ display: 'none' }}
+                  onChange={async e => {
+                    const file = e.target.files?.[0]
+                    if (!file) return
+                    e.target.value = ''
+                    try {
+                      const imported = await importConfig(file)
+                      setImportError(null)
+                      onChange(imported)
+                    } catch (err) {
+                      setImportError(err instanceof Error ? err.message : 'Import failed.')
+                    }
+                  }}
+                />
+                {importError && (
+                  <p style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--rose)', margin: 0 }}>{importError}</p>
+                )}
+              </div>
+            </div>
+          </>
         )}
-      </section>
 
-      {/* Layered Levels section — only visible in layered mode */}
-      {params.mode === 'layered' && (
-        <section className="flex flex-col gap-2">
-          <h2 className="text-xs font-mono text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Layered Levels</h2>
-          {LAYERED_LEVELS.map(level => (
-            <LayeredLevelEditor
-              key={level}
-              level={level}
-              config={params.layered[level]}
-              onChange={config => setLayeredLevel(level, config)}
-            />
-          ))}
-        </section>
-      )}
+        {/* ── LEVELS ── */}
+        {tab === 'levels' && (
+          <div className="osc-group">
+            <div className="osc-group__h">per-level parameters</div>
+            <div className="osc-group__body">
+              {PARSE_LEVELS.map(level => (
+                <LevelEditor
+                  key={level}
+                  level={level}
+                  lp={params.levels[level]}
+                  onChange={lp => setLevel(level, lp)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
 
-      <section className="flex flex-col gap-2">
-        <h2 className="text-xs font-mono text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Semantic</h2>
-        {(
-          [
-            ['sentimentToPitch', 'sentiment → pitch'],
-            ['energyToFilterCutoff', 'energy → filter cutoff'],
-            ['energyToTempo', 'energy → tempo'],
-          ] as [keyof AppParams['semantic'], string][]
-        ).map(([key, label]) => (
-          <label key={key} className="flex items-center gap-2 text-xs font-mono text-zinc-500 dark:text-zinc-400">
-            <input
-              type="checkbox"
-              checked={params.semantic[key]}
-              onChange={e => onChange({ ...params, semantic: { ...params.semantic, [key]: e.target.checked } })}
-              className="accent-zinc-500 dark:accent-zinc-400"
-            />
-            {label}
-          </label>
-        ))}
-      </section>
+        {/* ── LAYERED ── */}
+        {tab === 'layered' && (
+          <div className="osc-group">
+            <div className="osc-group__h">layered mix</div>
+            <div className="osc-group__body">
+              {LAYERED_LEVELS.map(level => (
+                <LayeredLevelEditor
+                  key={level}
+                  level={level}
+                  config={params.layered[level]}
+                  onChange={config => setLayeredLevel(level, config)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
 
-      <section className="flex flex-col gap-2">
-        <h2 className="text-xs font-mono text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Levels</h2>
-        {LEVELS.map(level => (
-          <LevelEditor
-            key={level}
-            level={level}
-            lp={params.levels[level]}
-            onChange={lp => setLevel(level, lp)}
-          />
-        ))}
-      </section>
+        {/* ── SEMANTIC ── */}
+        {tab === 'semantic' && (
+          <div className="osc-group">
+            <div className="osc-group__h">semantic routing</div>
+            <div className="osc-group__body">
+              <Toggle
+                label="sentiment → pitch"
+                checked={params.semantic.sentimentToPitch}
+                onChange={v => onChange({ ...params, semantic: { ...params.semantic, sentimentToPitch: v } })}
+              />
+              <Toggle
+                label="energy → filter cutoff"
+                checked={params.semantic.energyToFilterCutoff}
+                onChange={v => onChange({ ...params, semantic: { ...params.semantic, energyToFilterCutoff: v } })}
+              />
+              <Toggle
+                label="energy → tempo"
+                checked={params.semantic.energyToTempo}
+                onChange={v => onChange({ ...params, semantic: { ...params.semantic, energyToTempo: v } })}
+              />
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
