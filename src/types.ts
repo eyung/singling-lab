@@ -33,6 +33,9 @@ export interface SoundCharacter {
   noiseFilterFreq?: number  // Hz — noise-shaping filter frequency
 }
 
+// A character offset range within the raw input text string
+export type CharRange = { start: number; end: number }
+
 // The four parse levels that participate in layered mode
 export type LayeredLevel = 'word' | 'phrase' | 'sentence' | 'paragraph'
 export const LAYERED_LEVELS: readonly LayeredLevel[] = ['word', 'phrase', 'sentence', 'paragraph']
@@ -42,6 +45,7 @@ export interface LayeredLevelConfig {
   soundCharacterId: string
   gain: number    // 0–1
   enabled: boolean
+  sustainMode: 'retrigger' | 'hold'  // phrase/sentence/paragraph only; word always fires once
 }
 
 // Semantic signals extracted from text
@@ -145,12 +149,13 @@ export function validateLevelParams(lp: LevelParams): LevelParams {
   }
 }
 
-// Validate a LayeredLevelConfig; clamp gain, ensure soundCharacterId is non-empty
+// Validate a LayeredLevelConfig; clamp gain, ensure soundCharacterId is non-empty, normalise sustainMode
 export function validateLayeredLevelConfig(llc: LayeredLevelConfig): LayeredLevelConfig {
   return {
     ...llc,
     soundCharacterId: llc.soundCharacterId || 'default',
     gain: clamp(llc.gain, 0, 1),
+    sustainMode: llc.sustainMode === 'hold' ? 'hold' : 'retrigger',
   }
 }
 
@@ -183,10 +188,10 @@ export const DEFAULT_LEVEL_PARAMS: LevelParams = {
 }
 
 export const DEFAULT_LAYERED_PARAMS: Record<LayeredLevel, LayeredLevelConfig> = {
-  word:      { soundCharacterId: 'pluck',   gain: 0.70, enabled: true },
-  phrase:    { soundCharacterId: 'pad',     gain: 0.42, enabled: true },
-  sentence:  { soundCharacterId: 'strings', gain: 0.22, enabled: true },
-  paragraph: { soundCharacterId: 'ocean',   gain: 0.10, enabled: true },
+  word:      { soundCharacterId: 'pluck',   gain: 0.70, enabled: true, sustainMode: 'retrigger' },
+  phrase:    { soundCharacterId: 'pad',     gain: 0.42, enabled: true, sustainMode: 'retrigger' },
+  sentence:  { soundCharacterId: 'strings', gain: 0.22, enabled: true, sustainMode: 'retrigger' },
+  paragraph: { soundCharacterId: 'ocean',   gain: 0.10, enabled: true, sustainMode: 'hold' },
 }
 
 export const DEFAULT_PARAMS: AppParams = {

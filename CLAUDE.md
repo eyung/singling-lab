@@ -1,6 +1,6 @@
 # singling-lab Development Guidelines
 
-Auto-generated from all feature plans. Last updated: 2026-04-20
+Auto-generated from all feature plans. Last updated: 2026-04-29
 
 ## Active Technologies
 
@@ -20,6 +20,7 @@ src/
 ├── instruments.ts       — InstrumentPreset catalog (12 named oscillator presets)
 ├── parser.ts            — text → ParseUnit[] (5 parse levels + semantic analysis)
 ├── soundEngine.ts       — buildSoundParams(), SoundEngine (Web Audio)
+├── playbackUtils.ts     — findTextOffsets(), buildWordToSpanMap(), computeBeatMs() (007)
 ├── index.css            — Tailwind import + chassis CSS custom property tokens (006)
 ├── App.tsx              — playback loop, top-level UI; rAF tick; chassis shell (006)
 └── components/
@@ -36,7 +37,8 @@ specs/
 ├── 003-midi-instrument-select/ — instrument selector design artifacts
 ├── 004-config-persist/  — configuration persistence design artifacts
 ├── 005-audio-layering/  — simultaneous multi-level audio layering design artifacts
-└── 006-osc1-visual-overhaul/ — OSC-1 retro oscilloscope visual overhaul design artifacts
+├── 006-osc1-visual-overhaul/ — OSC-1 retro oscilloscope visual overhaul design artifacts
+└── 007-layering-timeline-sync/ — layered timeline sync, chord sustain, highlighting fix design artifacts
 
 .specify/                — spec-kit constitution, templates, scripts
 ```
@@ -62,6 +64,7 @@ npm run preview  # preview production build locally
 
 ## Recent Changes
 
+- 007-layering-timeline-sync: Layered timeline sync + highlighting fix — shared word-beat timeline in `playLayered()`; `sustainMode` field in `LayeredLevelConfig`; character-range highlight state replacing integer index; `.hl-phrase/.hl-sentence/.hl-paragraph` CSS underline classes; `playbackUtils.ts` (findTextOffsets, buildWordToSpanMap, computeBeatMs); sustain mode `Rocker` in `LayeredLevelEditor`
 - 006-osc1-visual-overhaul: OSC-1 retro visual overhaul — chassis shell, CrtScope, LedBar, Rocker, Toggle, VuMeter, Transport; tabbed Controls; CSS chassis tokens; IBM Plex Mono font; rAF tick in App; no data-model changes
 - 005-audio-layering: Simultaneous multi-level audio layering — `soundCharacters.ts`, `LayeredLevelConfig`, `layered` field in `AppParams`, `playLayered()` in App, `LayeredLevelEditor` in Controls
 - 004-config-persist: Config persistence — `configStore.ts` (export/import/localStorage), `ConfigFile` type, lazy App init, export/import/reset controls in Controls

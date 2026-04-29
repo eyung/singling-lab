@@ -116,6 +116,16 @@ function LayeredLevelEditor({
           </select>
         </label>
         <LedBar label="gain" min={0} max={1} step={0.01} value={config.gain} onChange={v => set({ gain: v })} />
+        {isBackdrop && (
+          <div>
+            <span className="osc-sel-label">sustain mode</span>
+            <Rocker
+              value={config.sustainMode}
+              options={['retrigger', 'hold'] as const}
+              onChange={v => set({ sustainMode: v as 'retrigger' | 'hold' })}
+            />
+          </div>
+        )}
       </div>
     </details>
   )

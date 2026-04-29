@@ -74,6 +74,7 @@ export function validateConfig(raw: unknown): AppParams | null {
         soundCharacterId: typeof l['soundCharacterId'] === 'string' ? l['soundCharacterId'] : def.soundCharacterId,
         gain:    typeof l['gain'] === 'number' ? l['gain'] : def.gain,
         enabled: typeof l['enabled'] === 'boolean' ? l['enabled'] : def.enabled,
+        sustainMode: (l['sustainMode'] === 'hold') ? 'hold' : def.sustainMode,
       })]
     })
   ) as AppParams['layered']
