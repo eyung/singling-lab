@@ -219,6 +219,9 @@ body {
   box-shadow: inset 0 -1px 0 var(--phosphor);
 }
 .osc-input-overlay .past { color: var(--ink-lo); }
+.osc-input-overlay .hl-phrase    { text-decoration-line: underline; text-decoration-style: solid;  text-decoration-color: var(--amber); text-decoration-thickness: 1px; }
+.osc-input-overlay .hl-sentence  { text-decoration-line: underline; text-decoration-style: dashed; text-decoration-color: var(--amber); text-decoration-thickness: 1px; }
+.osc-input-overlay .hl-paragraph { text-decoration-line: underline; text-decoration-style: dotted; text-decoration-color: var(--amber); text-decoration-thickness: 1px; }
 
 /* ─── tape transport ────────────────────────────────────────────── */
 .osc-transport {
