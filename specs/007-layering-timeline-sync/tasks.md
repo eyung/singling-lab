@@ -101,8 +101,8 @@ T011 depends on T009 (the overlay render was already updated to use `activeHighl
 **Purpose**: Build correctness and full manual test pass.
 
 - [x] T012 Run `npm run build` — confirm zero TypeScript errors and no type `any` violations; fix any type errors before proceeding
-- [ ] T013 Manual testing per `specs/007-layering-timeline-sync/quickstart.md` — work through all 14 checklist items (timeline sync, retrigger/hold sustain, single-mode highlighting for all 5 parse levels, layered-mode underline highlighting, config export/import backward compatibility)
-- [ ] T014 [P] Verify config backward compatibility: export a config, manually remove the `sustainMode` fields from the JSON, re-import — confirm each layer loads with its correct default `sustainMode` without errors
+- [x] T013 Manual testing per `specs/007-layering-timeline-sync/quickstart.md` — work through all 14 checklist items (timeline sync, retrigger/hold sustain, single-mode highlighting for all 5 parse levels, layered-mode underline highlighting, config export/import backward compatibility)
+- [x] T014 [P] Verify config backward compatibility: export a config, manually remove the `sustainMode` fields from the JSON, re-import — confirm each layer loads with its correct default `sustainMode` without errors
 
 ---
 
