@@ -1,5 +1,8 @@
-import type { AppParams, ConfigFile } from './types'
-import { DEFAULT_PARAMS, CONFIG_VERSION, validateAppParams, validateLevelParams, validateLayeredLevelConfig, LAYERED_LEVELS } from './types'
+import type { AppParams, ConfigFile, KeywordRule, ScaleMode } from './types'
+import {
+  DEFAULT_PARAMS, CONFIG_VERSION, validateAppParams, validateLevelParams,
+  validateLayeredLevelConfig, LAYERED_LEVELS, SCALE_MODES, SEMANTIC_CATEGORIES,
+} from './types'
 
 const STORAGE_KEY = 'singling-lab:params'
 const PARSE_LEVELS = ['letter', 'word', 'phrase', 'sentence', 'paragraph'] as const
@@ -7,6 +10,18 @@ const WAVEFORMS: OscillatorType[] = ['sine', 'triangle', 'sawtooth', 'square']
 const LEVEL_VALUES = new Set(PARSE_LEVELS)
 
 // ── Validation ────────────────────────────────────────────────────────────────
+
+function num(v: unknown, fallback: number): number {
+  return typeof v === 'number' && Number.isFinite(v) ? v : fallback
+}
+
+function bool(v: unknown, fallback: boolean): boolean {
+  return typeof v === 'boolean' ? v : fallback
+}
+
+function obj(v: unknown): Record<string, unknown> {
+  return typeof v === 'object' && v !== null ? (v as Record<string, unknown>) : {}
+}
 
 export function validateConfig(raw: unknown): AppParams | null {
   if (typeof raw !== 'object' || raw === null) return null
@@ -21,73 +36,100 @@ export function validateConfig(raw: unknown): AppParams | null {
     ? (p['parseLevel'] as AppParams['parseLevel'])
     : d.parseLevel
 
-  const sem = (typeof p['semantic'] === 'object' && p['semantic'] !== null)
-    ? p['semantic'] as Record<string, unknown>
-    : {}
+  const sem = obj(p['semantic'])
   const semantic: AppParams['semantic'] = {
-    sentimentToPitch:     typeof sem['sentimentToPitch'] === 'boolean' ? sem['sentimentToPitch'] : d.semantic.sentimentToPitch,
-    energyToFilterCutoff: typeof sem['energyToFilterCutoff'] === 'boolean' ? sem['energyToFilterCutoff'] : d.semantic.energyToFilterCutoff,
-    energyToTempo:        typeof sem['energyToTempo'] === 'boolean' ? sem['energyToTempo'] : d.semantic.energyToTempo,
+    sentimentToPitch:     bool(sem['sentimentToPitch'], d.semantic.sentimentToPitch),
+    energyToFilterCutoff: bool(sem['energyToFilterCutoff'], d.semantic.energyToFilterCutoff),
+    energyToTempo:        bool(sem['energyToTempo'], d.semantic.energyToTempo),
+    wordLengthToDuration: bool(sem['wordLengthToDuration'], d.semantic.wordLengthToDuration),
+    modalStrengthToPitch: bool(sem['modalStrengthToPitch'], d.semantic.modalStrengthToPitch),
+    frequencyTierToGain:  bool(sem['frequencyTierToGain'], d.semantic.frequencyTierToGain),
+    categoryToCharacter:  bool(sem['categoryToCharacter'], d.semantic.categoryToCharacter),
+    punctuationSounds:    bool(sem['punctuationSounds'], d.semantic.punctuationSounds),
+    sentenceContour:      bool(sem['sentenceContour'], d.semantic.sentenceContour),
   }
 
-  const levelsRaw = (typeof p['levels'] === 'object' && p['levels'] !== null)
-    ? p['levels'] as Record<string, unknown>
-    : {}
-
+  const levelsRaw = obj(p['levels'])
   const levels = Object.fromEntries(
     PARSE_LEVELS.map(level => {
-      const l = (typeof levelsRaw[level] === 'object' && levelsRaw[level] !== null)
-        ? levelsRaw[level] as Record<string, unknown>
-        : {}
+      const l = obj(levelsRaw[level])
       const def = d.levels[level]
       return [level, validateLevelParams({
-        enabled:     typeof l['enabled'] === 'boolean' ? l['enabled'] : def.enabled,
-        pitchMin:    typeof l['pitchMin'] === 'number' ? l['pitchMin'] : def.pitchMin,
-        pitchMax:    typeof l['pitchMax'] === 'number' ? l['pitchMax'] : def.pitchMax,
-        durationMin: typeof l['durationMin'] === 'number' ? l['durationMin'] : def.durationMin,
-        durationMax: typeof l['durationMax'] === 'number' ? l['durationMax'] : def.durationMax,
-        attack:      typeof l['attack'] === 'number' ? l['attack'] : def.attack,
-        release:     typeof l['release'] === 'number' ? l['release'] : def.release,
-        waveform:    WAVEFORMS.includes(l['waveform'] as OscillatorType)
-                       ? (l['waveform'] as OscillatorType) : def.waveform,
-        filterCutoff: typeof l['filterCutoff'] === 'number' ? l['filterCutoff'] : def.filterCutoff,
-        filterQ:     typeof l['filterQ'] === 'number' ? l['filterQ'] : def.filterQ,
-        gain:        typeof l['gain'] === 'number' ? l['gain'] : def.gain,
+        enabled:      bool(l['enabled'], def.enabled),
+        pitchMin:     num(l['pitchMin'], def.pitchMin),
+        pitchMax:     num(l['pitchMax'], def.pitchMax),
+        durationMin:  num(l['durationMin'], def.durationMin),
+        durationMax:  num(l['durationMax'], def.durationMax),
+        attack:       num(l['attack'], def.attack),
+        release:      num(l['release'], def.release),
+        waveform:     WAVEFORMS.includes(l['waveform'] as OscillatorType)
+                        ? (l['waveform'] as OscillatorType) : def.waveform,
+        filterCutoff: num(l['filterCutoff'], def.filterCutoff),
+        filterQ:      num(l['filterQ'], def.filterQ),
+        gain:         num(l['gain'], def.gain),
+        rate:         num(l['rate'], def.rate),
       })]
     })
   ) as AppParams['levels']
 
-  // Validate mode field (default 'single' for backward compatibility)
   const mode: AppParams['mode'] = p['mode'] === 'layered' ? 'layered' : 'single'
 
-  // Validate layered field (backward compatible — missing levels fall back to defaults)
-  const layeredRaw = (typeof p['layered'] === 'object' && p['layered'] !== null)
-    ? p['layered'] as Record<string, unknown>
-    : {}
+  const layeredRaw = obj(p['layered'])
   const layered = Object.fromEntries(
     LAYERED_LEVELS.map(level => {
-      const l = (typeof layeredRaw[level] === 'object' && layeredRaw[level] !== null)
-        ? layeredRaw[level] as Record<string, unknown>
-        : {}
+      const l = obj(layeredRaw[level])
       const def = d.layered[level]
       return [level, validateLayeredLevelConfig({
         soundCharacterId: typeof l['soundCharacterId'] === 'string' ? l['soundCharacterId'] : def.soundCharacterId,
-        gain:    typeof l['gain'] === 'number' ? l['gain'] : def.gain,
-        enabled: typeof l['enabled'] === 'boolean' ? l['enabled'] : def.enabled,
-        sustainMode: (l['sustainMode'] === 'hold') ? 'hold' : def.sustainMode,
+        gain:    num(l['gain'], def.gain),
+        enabled: bool(l['enabled'], def.enabled),
+        sustainMode: (l['sustainMode'] === 'hold' || l['sustainMode'] === 'retrigger')
+          ? l['sustainMode'] : def.sustainMode,
+        pan: num(l['pan'], def.pan),
       })]
     })
   ) as AppParams['layered']
 
+  const scaleRaw = obj(p['scale'])
+  const scale: AppParams['scale'] = {
+    quantize: bool(scaleRaw['quantize'], d.scale.quantize),
+    root:     num(scaleRaw['root'], d.scale.root),
+    mode:     SCALE_MODES.includes(scaleRaw['mode'] as ScaleMode)
+                ? (scaleRaw['mode'] as ScaleMode) : d.scale.mode,
+  }
+
+  const keywords: KeywordRule[] = Array.isArray(p['keywords'])
+    ? (p['keywords'] as unknown[]).flatMap(k => {
+        const kw = obj(k)
+        return typeof kw['word'] === 'string'
+          ? [{
+              word: kw['word'],
+              soundCharacterId: typeof kw['soundCharacterId'] === 'string' ? kw['soundCharacterId'] : 'bell',
+              boost: num(kw['boost'], 1),
+            }]
+          : []
+      })
+    : []
+
+  const catRaw = obj(p['categoryMap'])
+  const categoryMap: Record<string, string> = {}
+  for (const cat of SEMANTIC_CATEGORIES) {
+    const v = catRaw[cat]
+    categoryMap[cat] = typeof v === 'string' ? v : (d.categoryMap[cat] ?? '')
+  }
+
   return validateAppParams({
     parseLevel,
     instrument: typeof p['instrument'] === 'string' ? p['instrument'] : d.instrument,
-    polyphony:  typeof p['polyphony'] === 'number' ? p['polyphony'] : d.polyphony,
-    tempo:      typeof p['tempo'] === 'number' ? p['tempo'] : d.tempo,
+    polyphony:  num(p['polyphony'], d.polyphony),
+    tempo:      num(p['tempo'], d.tempo),
     semantic,
     levels,
     mode,
     layered,
+    scale,
+    keywords,
+    categoryMap,
   })
 }
 

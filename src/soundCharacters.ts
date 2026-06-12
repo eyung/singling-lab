@@ -32,6 +32,13 @@ export const SOUND_CHARACTERS: readonly SoundCharacter[] = [
   { id: 'thunder',    name: 'Thunder',   category: 'environment', percussive: false, source: 'noise', noiseColor: 'white', noiseFilterType: 'lowpass',  noiseFilterFreq:  150, attack: 0.05,release: 3.0, filterCutoff:  150, filterQ: 0.5, gain: 0.4 },
   { id: 'machinery',  name: 'Machinery', category: 'environment', percussive: false, source: 'noise', noiseColor: 'white', noiseFilterType: 'bandpass', noiseFilterFreq:  600, attack: 0.1, release: 0.5, filterCutoff:  800, filterQ: 3.0, gain: 0.2 },
   { id: 'space',      name: 'Space',     category: 'environment', percussive: false, source: 'noise', noiseColor: 'pink',  noiseFilterType: 'lowpass',  noiseFilterFreq:  100, attack: 1.5, release: 4.0, filterCutoff:  100, filterQ: 0.5, gain: 0.3 },
+
+  // ── Percussion (word-level / punctuation / keyword accents only) ────────────
+  { id: 'tick',  name: 'Tick',      category: 'percussion', percussive: true, source: 'noise', noiseColor: 'white', noiseFilterType: 'highpass', noiseFilterFreq: 6000, attack: 0.001, release: 0.030, filterCutoff: 12000, filterQ: 1.0, gain: 0.30 },
+  { id: 'thud',  name: 'Thud',      category: 'percussion', percussive: true, source: 'noise', noiseColor: 'white', noiseFilterType: 'lowpass',  noiseFilterFreq:  140, attack: 0.001, release: 0.120, filterCutoff:  200, filterQ: 0.7, gain: 0.50 },
+  { id: 'snap',  name: 'Snap',      category: 'percussion', percussive: true, source: 'noise', noiseColor: 'white', noiseFilterType: 'bandpass', noiseFilterFreq: 2500, attack: 0.001, release: 0.050, filterCutoff: 5000, filterQ: 3.0, gain: 0.35 },
+  { id: 'chime', name: 'Chime',     category: 'percussion', percussive: true, source: 'oscillator', waveform: 'sine', attack: 0.001, release: 0.300, filterCutoff: 9000, filterQ: 6.0, gain: 0.30 },
+  { id: 'block', name: 'Woodblock', category: 'percussion', percussive: true, source: 'oscillator', waveform: 'triangle', attack: 0.001, release: 0.060, filterCutoff: 3000, filterQ: 8.0, gain: 0.40 },
 ] as const
 
 export function getSoundCharacter(id: string): SoundCharacter | undefined {

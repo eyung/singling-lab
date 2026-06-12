@@ -1,52 +1,44 @@
-import type { ParseUnit, SoundParams, AppParams, SoundCharacter } from './types'
+import type { SoundParams, Timeline, TimelineEvent } from './types'
+import { getSoundCharacter } from './soundCharacters'
 
-function lerp(a: number, b: number, t: number): number {
-  return a + (b - a) * Math.max(0, Math.min(1, t))
-}
+// Synthesis core. The same scheduleEvent() graph builder drives both the live
+// AudioContext and the OfflineAudioContext WAV render, so exports sound
+// identical to playback. Noise is seeded per event → renders are reproducible.
 
-// Map a unit's text to a 0–1 value based on character codes
-function textToNorm(text: string): number {
-  if (!text) return 0.5
-  const sum = [...text].reduce((acc, c) => acc + c.charCodeAt(0), 0)
-  return (sum % 97) / 97
-}
-
-// C major note frequencies across C2–C6 (28 notes)
-const C_MAJOR_FREQS: readonly number[] = [
-  65.41, 73.42, 82.41, 87.31, 98.00, 110.00, 123.47,     // C2–B2
-  130.81, 146.83, 164.81, 174.61, 196.00, 220.00, 246.94, // C3–B3
-  261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88, // C4–B4
-  523.25, 587.33, 659.26, 698.46, 783.99, 880.00, 987.77, // C5–B5
-]
-
-// Quantise a frequency to the nearest C major note across C2–C6
-export function quantiseToCMajor(frequency: number): number {
-  if (frequency <= 0) return 261.63
-  let best = C_MAJOR_FREQS[0]!
-  let bestDist = Math.abs(Math.log2(frequency / best))
-  for (let i = 1; i < C_MAJOR_FREQS.length; i++) {
-    const dist = Math.abs(Math.log2(frequency / C_MAJOR_FREQS[i]!))
-    if (dist < bestDist) { bestDist = dist; best = C_MAJOR_FREQS[i]! }
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0
+  return () => {
+    a |= 0
+    a = (a + 0x6d2b79f5) | 0
+    let t = Math.imul(a ^ (a >>> 15), 1 | a)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
   }
-  return best
 }
 
-// Generate a noise buffer (white or pink) of the given duration
-function generateNoiseBuffer(ctx: AudioContext, duration: number, noiseColor: 'white' | 'pink'): AudioBuffer {
+const MAX_NOISE_BUFFER_S = 8
+
+function makeNoiseBuffer(
+  ctx: BaseAudioContext,
+  duration: number,
+  color: 'white' | 'pink',
+  seed: number,
+): AudioBuffer {
   const sampleRate = ctx.sampleRate
-  const frameCount = Math.max(1, Math.ceil(sampleRate * duration))
+  const frameCount = Math.max(1, Math.ceil(sampleRate * Math.min(duration, MAX_NOISE_BUFFER_S)))
   const buffer = ctx.createBuffer(1, frameCount, sampleRate)
   const data = buffer.getChannelData(0)
+  const rng = mulberry32(seed)
 
-  if (noiseColor === 'white') {
+  if (color === 'white') {
     for (let i = 0; i < frameCount; i++) {
-      data[i] = Math.random() * 2 - 1
+      data[i] = rng() * 2 - 1
     }
   } else {
     // Voss-McCartney 6-generator pink noise approximation
     let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0
     for (let i = 0; i < frameCount; i++) {
-      const white = Math.random() * 2 - 1
+      const white = rng() * 2 - 1
       b0 = 0.99886 * b0 + white * 0.0555179
       b1 = 0.99332 * b1 + white * 0.0750759
       b2 = 0.96900 * b2 + white * 0.1538520
@@ -59,169 +51,264 @@ function generateNoiseBuffer(ctx: AudioContext, duration: number, noiseColor: 'w
   return buffer
 }
 
-export function buildSoundParams(unit: ParseUnit, params: AppParams): SoundParams {
-  const lp = params.levels[unit.level]
-  const sp = params.semantic
+function clamp(v: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, v))
+}
 
-  let pitchNorm = textToNorm(unit.text)
-  let durationNorm = textToNorm(unit.text.split('').reverse().join(''))
-  let filterCutoff = lp.filterCutoff
+// Master bus: input gain → limiter-style compressor (→ analyser, live only) → destination
+export interface MasterChain {
+  input: GainNode
+  compressor: DynamicsCompressorNode
+  analyser: AnalyserNode | null
+}
 
-  // Apply semantic overrides
-  if (sp.sentimentToPitch) {
-    const sentimentBias = (unit.semantic.sentiment + 1) / 2
-    pitchNorm = lerp(pitchNorm, sentimentBias, 0.5)
+export function createMasterChain(ctx: BaseAudioContext, withAnalyser: boolean): MasterChain {
+  const input = ctx.createGain()
+  input.gain.value = 1
+  const compressor = ctx.createDynamicsCompressor()
+  compressor.threshold.value = -3
+  compressor.knee.value = 6
+  compressor.ratio.value = 4
+  compressor.attack.value = 0.003
+  compressor.release.value = 0.25
+  input.connect(compressor)
+  let analyser: AnalyserNode | null = null
+  if (withAnalyser) {
+    analyser = ctx.createAnalyser()
+    analyser.fftSize = 2048
+    analyser.smoothingTimeConstant = 0.55
+    compressor.connect(analyser)
+    analyser.connect(ctx.destination)
+  } else {
+    compressor.connect(ctx.destination)
   }
-  if (sp.energyToFilterCutoff) {
-    filterCutoff = lerp(200, 8000, unit.semantic.energy)
-  }
-  const frequency = lerp(lp.pitchMin, lp.pitchMax, pitchNorm)
-  const duration = lerp(lp.durationMin, lp.durationMax, durationNorm)
+  return { input, compressor, analyser }
+}
 
-  return {
-    frequency,
-    waveform: lp.waveform,
-    duration,
-    attack: lp.attack,
-    release: lp.release,
-    filterCutoff,
-    filterQ: lp.filterQ,
-    gain: lp.gain,
-    detune: (pitchNorm - 0.5) * 20,
+// Build and schedule the audio graph for one timeline event at absolute ctx time `at`.
+export function scheduleEvent(ctx: BaseAudioContext, dest: AudioNode, ev: TimelineEvent, at: number): void {
+  if (ev.dropped) return
+  scheduleSound(ctx, dest, ev.sp, ev.characterId, ev.layerGain, at,
+    ((ev.range.start + 1) * 2654435761 ^ Math.round(ev.tMs * 7)) >>> 0)
+}
+
+export function scheduleSound(
+  ctx: BaseAudioContext,
+  dest: AudioNode,
+  sp: SoundParams,
+  characterId: string | null,
+  layerGain: number,
+  at: number,
+  seed: number,
+): void {
+  const char = characterId ? getSoundCharacter(characterId) : undefined
+
+  // sanitise the envelope so ramps never cross (no clicks)
+  const dur = Math.max(sp.duration, 0.02)
+  const atk = clamp(sp.attack, 0.001, dur * 0.5)
+  const rel = clamp(sp.release, 0.005, dur - atk)
+  const peak = clamp(sp.gain * layerGain, 0, 1.2)
+  if (peak <= 0) return
+
+  const gainNode = ctx.createGain()
+  gainNode.gain.setValueAtTime(0, at)
+  gainNode.gain.linearRampToValueAtTime(peak, at + atk)
+  const relStart = at + dur - rel
+  if (relStart > at + atk) gainNode.gain.setValueAtTime(peak, relStart)
+  gainNode.gain.linearRampToValueAtTime(0, at + dur)
+
+  const filter = ctx.createBiquadFilter()
+  filter.type = 'lowpass'
+  filter.frequency.setValueAtTime(clamp(sp.filterCutoff, 20, 18000), at)
+  filter.Q.setValueAtTime(sp.filterQ, at)
+
+  let out: AudioNode = gainNode
+  if (sp.pan !== 0) {
+    const panner = ctx.createStereoPanner()
+    panner.pan.setValueAtTime(clamp(sp.pan, -1, 1), at)
+    gainNode.connect(panner)
+    out = panner
+  }
+
+  if (char?.source === 'noise') {
+    const buffer = makeNoiseBuffer(ctx, dur, char.noiseColor ?? 'white', seed)
+    const src = ctx.createBufferSource()
+    src.buffer = buffer
+    src.loop = dur > MAX_NOISE_BUFFER_S
+
+    const shape = ctx.createBiquadFilter()
+    shape.type = char.noiseFilterType ?? 'lowpass'
+    shape.frequency.setValueAtTime(char.noiseFilterFreq ?? sp.filterCutoff, at)
+    shape.Q.setValueAtTime(char.filterQ, at)
+
+    src.connect(shape)
+    shape.connect(filter)
+    filter.connect(gainNode)
+    out.connect(dest)
+    src.start(at)
+    src.stop(at + dur + 0.02)
+  } else {
+    const osc = ctx.createOscillator()
+    osc.type = char?.waveform ?? sp.waveform
+    osc.frequency.setValueAtTime(sp.frequency, at)
+    if (sp.glideTo !== undefined && sp.glideTo !== sp.frequency) {
+      const glideStart = at + Math.min(0.04, dur * 0.2)
+      osc.frequency.setValueAtTime(sp.frequency, glideStart)
+      osc.frequency.linearRampToValueAtTime(sp.glideTo, at + dur * 0.75)
+    }
+    osc.detune.setValueAtTime(sp.detune, at)
+    osc.connect(filter)
+    filter.connect(gainNode)
+    out.connect(dest)
+    osc.start(at)
+    osc.stop(at + dur + 0.02)
   }
 }
 
-export class SoundEngine {
+export type EngineState = 'idle' | 'playing' | 'paused'
+
+const LOOKAHEAD_MS = 350
+const TIMER_MS = 100
+const START_DELAY_S = 0.1
+
+// Live playback engine: lookahead scheduler over a precomputed Timeline.
+// Pause/resume map to AudioContext suspend/resume (the audio clock freezes,
+// so scheduled events and the position stay perfectly aligned).
+export class LiveEngine {
   private ctx: AudioContext | null = null
-  private activeVoices = 0
-  private maxVoices: number
-  private compressor: DynamicsCompressorNode | null = null
+  private master: MasterChain | null = null
+  private timer: ReturnType<typeof setInterval> | null = null
+  private timeline: Timeline | null = null
+  private fromMs = 0
+  private t0 = 0
+  private nextIdx = 0
+  private state: EngineState = 'idle'
+  private onEnded: (() => void) | null = null
 
-  constructor(maxVoices = 4) {
-    this.maxVoices = maxVoices
-  }
-
-  private getCtx(): AudioContext {
+  private ensureCtx(): AudioContext {
     if (!this.ctx || this.ctx.state === 'closed') {
       this.ctx = new AudioContext()
-      this.compressor = null // reset compressor on new context
+      this.master = null
     }
-    if (this.ctx.state === 'suspended') {
-      this.ctx.resume()
+    if (this.ctx.state === 'suspended' && this.state !== 'paused') {
+      void this.ctx.resume()
+    }
+    if (!this.master) {
+      this.master = createMasterChain(this.ctx, true)
     }
     return this.ctx
   }
 
-  private getCompressor(ctx: AudioContext): DynamicsCompressorNode {
-    if (!this.compressor) {
-      this.compressor = ctx.createDynamicsCompressor()
-      this.compressor.threshold.value = -3
-      this.compressor.knee.value = 6
-      this.compressor.ratio.value = 4
-      this.compressor.attack.value = 0.003
-      this.compressor.release.value = 0.25
-      this.compressor.connect(ctx.destination)
+  getState(): EngineState {
+    return this.state
+  }
+
+  getAnalyser(): AnalyserNode | null {
+    return this.master?.analyser ?? null
+  }
+
+  positionMs(): number {
+    if (!this.ctx || this.state === 'idle' || !this.timeline) return 0
+    const pos = (this.ctx.currentTime - this.t0) * 1000 + this.fromMs
+    return clamp(pos, 0, this.timeline.totalMs)
+  }
+
+  play(timeline: Timeline, fromMs: number, onEnded: () => void): void {
+    this.cancelSchedule(true)
+    const ctx = this.ensureCtx()
+    if (ctx.state === 'suspended') void ctx.resume()
+    this.timeline = timeline
+    this.fromMs = clamp(fromMs, 0, timeline.totalMs)
+    this.t0 = ctx.currentTime + START_DELAY_S
+    this.onEnded = onEnded
+    this.state = 'playing'
+
+    const events = timeline.events
+    this.nextIdx = 0
+    while (this.nextIdx < events.length && events[this.nextIdx]!.tMs < this.fromMs - 1) this.nextIdx++
+
+    const tick = () => {
+      if (!this.ctx || !this.timeline || this.state === 'idle') return
+      if (this.ctx.state === 'suspended') return
+      const posMs = (this.ctx.currentTime - this.t0) * 1000 + this.fromMs
+      const horizon = posMs + LOOKAHEAD_MS
+      const master = this.master
+      while (this.nextIdx < events.length && events[this.nextIdx]!.tMs <= horizon) {
+        const ev = events[this.nextIdx]!
+        this.nextIdx++
+        if (master) {
+          const at = Math.max(this.ctx.currentTime + 0.005, this.t0 + (ev.tMs - this.fromMs) / 1000)
+          scheduleEvent(this.ctx, master.input, ev, at)
+        }
+      }
+      if (this.nextIdx >= events.length && posMs >= this.timeline.totalMs) {
+        this.finishNaturally()
+      }
     }
-    return this.compressor
+    if (this.timer) clearInterval(this.timer)
+    this.timer = setInterval(tick, TIMER_MS)
+    tick()
   }
 
-  playUnit(sp: SoundParams): void {
-    if (this.activeVoices >= this.maxVoices) return
-
-    const ctx = this.getCtx()
-    const now = ctx.currentTime
-
-    const osc = ctx.createOscillator()
-    const filter = ctx.createBiquadFilter()
-    const gain = ctx.createGain()
-
-    osc.type = sp.waveform
-    osc.frequency.setValueAtTime(sp.frequency, now)
-    osc.detune.setValueAtTime(sp.detune, now)
-
-    filter.type = 'lowpass'
-    filter.frequency.setValueAtTime(sp.filterCutoff, now)
-    filter.Q.setValueAtTime(sp.filterQ, now)
-
-    gain.gain.setValueAtTime(0, now)
-    gain.gain.linearRampToValueAtTime(sp.gain, now + sp.attack)
-    gain.gain.setValueAtTime(sp.gain, now + sp.duration - sp.release)
-    gain.gain.linearRampToValueAtTime(0, now + sp.duration)
-
-    osc.connect(filter)
-    filter.connect(gain)
-    gain.connect(ctx.destination)
-
-    osc.start(now)
-    osc.stop(now + sp.duration)
-
-    this.activeVoices++
-    osc.onended = () => { this.activeVoices-- }
+  pause(): void {
+    if (this.state !== 'playing' || !this.ctx) return
+    this.state = 'paused'
+    void this.ctx.suspend()
   }
 
-  playLayeredUnit(sp: SoundParams, char: SoundCharacter, layerGain: number): void {
-    if (this.activeVoices >= this.maxVoices) return
-
-    const ctx = this.getCtx()
-    const compressor = this.getCompressor(ctx)
-    const now = ctx.currentTime
-    const peakGain = sp.gain * layerGain
-
-    const filter = ctx.createBiquadFilter()
-    filter.type = 'lowpass'
-    filter.frequency.setValueAtTime(sp.filterCutoff, now)
-    filter.Q.setValueAtTime(sp.filterQ, now)
-
-    const gainNode = ctx.createGain()
-    gainNode.gain.setValueAtTime(0, now)
-    gainNode.gain.linearRampToValueAtTime(peakGain, now + sp.attack)
-    gainNode.gain.setValueAtTime(peakGain, now + sp.duration - sp.release)
-    gainNode.gain.linearRampToValueAtTime(0, now + sp.duration)
-
-    this.activeVoices++
-
-    if (char.source === 'noise') {
-      const buffer = generateNoiseBuffer(ctx, sp.duration, char.noiseColor ?? 'white')
-      const bufferSource = ctx.createBufferSource()
-      bufferSource.buffer = buffer
-      bufferSource.loop = false
-
-      const shapeFilter = ctx.createBiquadFilter()
-      shapeFilter.type = char.noiseFilterType ?? 'lowpass'
-      shapeFilter.frequency.setValueAtTime(char.noiseFilterFreq ?? char.filterCutoff, now)
-      shapeFilter.Q.setValueAtTime(char.filterQ, now)
-
-      bufferSource.connect(shapeFilter)
-      shapeFilter.connect(filter)
-      filter.connect(gainNode)
-      gainNode.connect(compressor)
-
-      bufferSource.start(now)
-      bufferSource.onended = () => { this.activeVoices-- }
-    } else {
-      const osc = ctx.createOscillator()
-      osc.type = char.waveform ?? 'sine'
-      osc.frequency.setValueAtTime(sp.frequency, now)
-      osc.detune.setValueAtTime(sp.detune, now)
-
-      osc.connect(filter)
-      filter.connect(gainNode)
-      gainNode.connect(compressor)
-
-      osc.start(now)
-      osc.stop(now + sp.duration)
-      osc.onended = () => { this.activeVoices-- }
-    }
+  resume(): void {
+    if (this.state !== 'paused' || !this.ctx) return
+    this.state = 'playing'
+    void this.ctx.resume()
   }
 
+  // user stop: fast-fade the master input to cut scheduled audio without clicks
   stop(): void {
-    this.ctx?.close()
-    this.ctx = null
-    this.compressor = null
-    this.activeVoices = 0
+    this.cancelSchedule(true)
   }
 
-  updateMaxVoices(n: number): void {
-    this.maxVoices = n
+  private finishNaturally(): void {
+    if (this.timer) { clearInterval(this.timer); this.timer = null }
+    this.state = 'idle'
+    const cb = this.onEnded
+    this.onEnded = null
+    if (cb) cb()
+  }
+
+  private cancelSchedule(cut: boolean): void {
+    if (this.timer) { clearInterval(this.timer); this.timer = null }
+    this.onEnded = null
+    if (this.state === 'idle') return
+    this.state = 'idle'
+    const ctx = this.ctx
+    if (!ctx || ctx.state === 'closed') return
+    if (ctx.state === 'suspended') void ctx.resume()
+    if (cut && this.master) {
+      const old = this.master
+      old.input.gain.setTargetAtTime(0, ctx.currentTime, 0.012)
+      setTimeout(() => {
+        // tear the whole retired chain off the destination so nodes can be GC'd
+        try { old.input.disconnect() } catch { /* already gone */ }
+        try { old.compressor.disconnect() } catch { /* already gone */ }
+        try { old.analyser?.disconnect() } catch { /* already gone */ }
+      }, 150)
+      this.master = null // rebuilt lazily on next play
+    }
+  }
+
+  // one-off sound (live typing preview, UI auditions)
+  playOne(sp: SoundParams, characterId: string | null): void {
+    const ctx = this.ensureCtx()
+    const master = this.master
+    if (!master) return
+    const seed = (Math.round(sp.frequency * 31 + sp.duration * 997) * 2654435761) >>> 0
+    scheduleSound(ctx, master.input, sp, characterId, 1, ctx.currentTime + 0.02, seed)
+  }
+
+  dispose(): void {
+    this.cancelSchedule(false)
+    if (this.ctx && this.ctx.state !== 'closed') void this.ctx.close()
+    this.ctx = null
+    this.master = null
   }
 }

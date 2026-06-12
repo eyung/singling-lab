@@ -1,14 +1,39 @@
+import { useEffect, useRef, useState } from 'react'
+
 const SEGS = 20
 
 interface Props {
-  playing: boolean
-  tick: number
+  getAnalyser: () => AnalyserNode | null
 }
 
-export default function VuMeter({ playing, tick }: Props) {
-  const level = playing
-    ? 0.55 + 0.35 * Math.sin(tick / 4) + 0.1 * Math.sin(tick / 1.3)
-    : 0.04
+// Real output metering: RMS of the master analyser, fast attack / slow decay.
+export default function VuMeter({ getAnalyser }: Props) {
+  const [level, setLevel] = useState(0)
+  const smoothRef = useRef(0)
+
+  useEffect(() => {
+    let raf = 0
+    const buf = new Float32Array(2048)
+    const loop = () => {
+      const analyser = getAnalyser()
+      let rms = 0
+      if (analyser) {
+        analyser.getFloatTimeDomainData(buf)
+        let sum = 0
+        for (let i = 0; i < buf.length; i++) sum += buf[i]! * buf[i]!
+        rms = Math.sqrt(sum / buf.length)
+      }
+      const target = Math.min(1, rms * 2.6)
+      const prev = smoothRef.current
+      const next = target > prev ? prev + (target - prev) * 0.6 : prev * 0.92
+      smoothRef.current = next
+      setLevel(l => (Math.abs(l - next) > 0.004 ? next : l))
+      raf = requestAnimationFrame(loop)
+    }
+    raf = requestAnimationFrame(loop)
+    return () => cancelAnimationFrame(raf)
+  }, [getAnalyser])
+
   const lit = Math.max(0, Math.min(SEGS, Math.round(level * SEGS)))
 
   return (

@@ -1,12 +1,13 @@
 {
   "name": "singling-lab",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.2.2",
@@ -15,7 +16,8 @@
     "@vitejs/plugin-react-swc": "^4.3.0",
     "tailwindcss": "^4.2.2",
     "typescript": "^6.0.2",
-    "vite": "^8.0.8"
+    "vite": "^8.0.8",
+    "vitest": "^4.1.8"
   },
   "dependencies": {
     "compromise": "^14.15.0",

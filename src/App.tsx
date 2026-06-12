@@ -1,45 +1,105 @@
-import { useRef, useState, useCallback, useEffect, useMemo } from 'react'
-import { parseText } from './parser'
-import { buildSoundParams, SoundEngine, quantiseToCMajor } from './soundEngine'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { parseAll } from './parser'
+import { buildTimeline, cellIndexAt } from './timeline'
+import { LiveEngine } from './soundEngine'
+import type { EngineState } from './soundEngine'
+import { mapUnit } from './mapping'
+import { buildScaleFreqs } from './scale'
+import { buildMidi, buildParsedTxt } from './export'
+import { renderWavBlob, downloadBlob, filenameSlug } from './render'
 import { DEFAULT_PARAMS } from './types'
-import type { AppParams, ParseLevel, LayeredLevel, CharRange } from './types'
-import { loadFromStorage, saveToStorage } from './configStore'
+import type { AppParams, CharRange, LayeredLevel, Timeline, TimelineEvent } from './types'
+import { loadFromStorage, saveToStorage, resetToDefaults } from './configStore'
 import { getInitialTheme, applyTheme } from './themeStore'
 import type { Theme } from './themeStore'
-import { getSoundCharacter } from './soundCharacters'
-import { findTextOffsets, buildWordToSpanMap, computeBeatMs } from './playbackUtils'
 import Controls from './components/Controls'
 import CrtScope from './components/CrtScope'
+import StructureMap from './components/StructureMap'
 import Transport from './components/Transport'
-import { exportConfig } from './configStore'
 
-const engine = new SoundEngine()
+const engine = new LiveEngine()
+const getAnalyser = () => engine.getAnalyser()
 
-type NonWordLevel = 'phrase' | 'sentence' | 'paragraph'
-const NON_WORD_LEVELS: NonWordLevel[] = ['phrase', 'sentence', 'paragraph']
+const BACKDROP_LEVELS: readonly Exclude<LayeredLevel, 'word'>[] = ['phrase', 'sentence', 'paragraph']
+
+const DEMOS = [
+  {
+    id: 'storm',
+    label: 'storm',
+    text: `The morning was calm, and the harbour lay bright beneath a gentle sun. Small boats drifted out, one by one, past the quiet lighthouse.
+
+But the storm came fast. Wind struck the water; waves rose, crashed, and rose again! Could the little fleet survive? The fishermen must hold their course — they will not turn back.`,
+  },
+  {
+    id: 'ishmael',
+    label: 'ishmael',
+    text: `Call me Ishmael. Some years ago — never mind how long precisely — having little or no money in my purse, and nothing particular to interest me on shore, I thought I would sail about a little and see the watery part of the world.`,
+  },
+  {
+    id: 'rhythm',
+    label: 'rhythm',
+    text: `One, two, three, four. Numbers march in order, steady as a drum. Five and six and seven and eight! When the counting stops, the silence answers.
+
+Listen: every comma taps, every period lands, and every question floats. Hear it?`,
+  },
+]
+
+// Recently fired layers around posMs, for the scope's layer activity LEDs
+function activityAt(events: readonly TimelineEvent[], posMs: number): Partial<Record<LayeredLevel, boolean>> {
+  const out: Partial<Record<LayeredLevel, boolean>> = {}
+  if (!events.length) return out
+  let lo = 0
+  let hi = events.length - 1
+  let idx = -1
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1
+    if (events[mid]!.tMs <= posMs) { idx = mid; lo = mid + 1 }
+    else hi = mid - 1
+  }
+  for (let i = idx; i >= 0 && events[i]!.tMs > posMs - 180; i--) {
+    const ev = events[i]!
+    if (!ev.dropped) out[ev.level as LayeredLevel] = true
+  }
+  return out
+}
 
 export default function App() {
   const [text, setText] = useState('')
   const [params, setParams] = useState<AppParams>(() => loadFromStorage() ?? DEFAULT_PARAMS)
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [activeUnit, setActiveUnit] = useState<string | null>(null)
+  const [playState, setPlayState] = useState<EngineState>('idle')
+  const [posMs, setPosMs] = useState(0)
   const [theme, setTheme] = useState<Theme>(() => getInitialTheme())
-  const [tick, setTick] = useState(0)
-  const [activeHighlight, setActiveHighlight] = useState<CharRange | null>(null)
-  const [layeredHighlights, setLayeredHighlights] = useState<Partial<Record<LayeredLevel, CharRange | null>>>({})
-  const rafRef = useRef<number | null>(null)
-  const playbackRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [liveTyping, setLiveTyping] = useState(false)
+  const [rendering, setRendering] = useState(false)
+  const playingTimelineRef = useRef<Timeline | null>(null)
+  const overlayRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  const parsed = useMemo(() => parseAll(text), [text])
+  const timeline = useMemo(() => buildTimeline(parsed, params), [parsed, params])
+
+  // while audible, highlights/structure track the snapshot the engine is playing
+  const activeTimeline = playState !== 'idle' && playingTimelineRef.current
+    ? playingTimelineRef.current
+    : timeline
+
+  const stats = useMemo(() => ({
+    words: parsed.units.word.filter(u => u.kind === 'text').length,
+    phrases: parsed.units.phrase.length,
+    sentences: parsed.units.sentence.length,
+    paragraphs: parsed.units.paragraph.length,
+  }), [parsed])
 
   useEffect(() => {
-    let running = true
+    if (playState === 'idle') return
+    let raf = 0
     const loop = () => {
-      if (!running) return
-      setTick(t => t + 1)
-      rafRef.current = requestAnimationFrame(loop)
+      setPosMs(engine.positionMs())
+      raf = requestAnimationFrame(loop)
     }
-    rafRef.current = requestAnimationFrame(loop)
-    return () => { running = false; if (rafRef.current) cancelAnimationFrame(rafRef.current) }
-  }, [])
+    raf = requestAnimationFrame(loop)
+    return () => cancelAnimationFrame(raf)
+  }, [playState])
 
   const toggleTheme = useCallback(() => {
     const next: Theme = theme === 'dark' ? 'light' : 'dark'
@@ -48,172 +108,123 @@ export default function App() {
   }, [theme])
 
   const stop = useCallback(() => {
-    if (playbackRef.current) clearTimeout(playbackRef.current)
-    playbackRef.current = null
     engine.stop()
-    setIsPlaying(false)
-    setActiveUnit(null)
-    setActiveHighlight(null)
-    setLayeredHighlights({})
+    playingTimelineRef.current = null
+    setPlayState('idle')
+    setPosMs(0)
   }, [])
 
-  const play = useCallback(() => {
-    if (isPlaying) { stop(); return }
+  const startFrom = useCallback((tl: Timeline, fromMs: number) => {
+    if (!tl.grid.length) return
+    playingTimelineRef.current = tl
+    engine.play(tl, fromMs, () => {
+      playingTimelineRef.current = null
+      setPlayState('idle')
+      setPosMs(0)
+    })
+    setPlayState('playing')
+  }, [])
 
-    const units = parseText(text, params.parseLevel)
-    if (!units.length) return
-
-    const unitOffsets = findTextOffsets(text, units)
-
-    engine.updateMaxVoices(params.polyphony)
-    setIsPlaying(true)
-
-    let i = 0
-    const step = () => {
-      if (i >= units.length) {
-        setIsPlaying(false)
-        setActiveUnit(null)
-        setActiveHighlight(null)
-        return
-      }
-      const unit = units[i]!
-      i++
-      if (params.levels[unit.level].enabled) {
-        const sp = buildSoundParams(unit, params)
-        engine.playUnit(sp)
-        setActiveUnit(unit.text)
-        setActiveHighlight(unitOffsets[i - 1] ?? null)
-      }
-      const interval = computeBeatMs(unit, params)
-      playbackRef.current = setTimeout(step, interval)
-    }
-    step()
-  }, [text, params, isPlaying, stop])
-
-  const playLayered = useCallback(() => {
-    if (isPlaying) { stop(); return }
-
-    const wordUnits = parseText(text, 'word')
-    if (!wordUnits.length) return
-
-    engine.updateMaxVoices(params.polyphony)
-    setIsPlaying(true)
-
-    const wordOffsets = findTextOffsets(text, wordUnits)
-
-    // Build per-layer data for each active non-word layer
-    const layerData: Partial<Record<NonWordLevel, {
-      units: ReturnType<typeof parseText>
-      wordToSpan: number[]
-      spanOffsets: CharRange[]
-      spanWordCounts: number[]
-    }>> = {}
-
-    for (const level of NON_WORD_LEVELS) {
-      if (!params.layered[level].enabled) continue
-      const units = parseText(text, level as ParseLevel)
-      if (!units.length) continue
-      const spanOffsets = findTextOffsets(text, units)
-      const wordToSpan = buildWordToSpanMap(wordOffsets, spanOffsets)
-      const spanWordCounts = new Array<number>(units.length).fill(0)
-      for (const spanIdx of wordToSpan) {
-        if (spanIdx >= 0 && spanIdx < units.length) spanWordCounts[spanIdx]++
-      }
-      layerData[level] = { units, wordToSpan, spanOffsets, spanWordCounts }
-    }
-
-    const wordLayerEnabled = params.layered['word'].enabled
-    const wordChar = getSoundCharacter(params.layered['word'].soundCharacterId) ?? getSoundCharacter('default')!
-
-    // Track which span each non-word layer is currently in (undefined = not yet started)
-    const activeSpanIdx: Partial<Record<NonWordLevel, number>> = {}
-
-    let wordIdx = 0
-
-    const step = () => {
-      if (wordIdx >= wordUnits.length) {
-        setIsPlaying(false)
-        setActiveUnit(null)
-        setActiveHighlight(null)
-        setLayeredHighlights({})
-        return
-      }
-
-      const wordUnit = wordUnits[wordIdx]!
-      const beatMs = computeBeatMs(wordUnit, params)
-
-      // Always track word position for highlight (regardless of word layer audio state)
-      const wordRange = wordOffsets[wordIdx]
-      if (wordRange) setActiveHighlight(wordRange)
-      setActiveUnit(wordUnit.text)
-
-      // Fire word layer audio if enabled
-      if (wordLayerEnabled) {
-        const sp = buildSoundParams(wordUnit, params)
-        sp.frequency = quantiseToCMajor(sp.frequency)
-        sp.duration = beatMs / 1000
-        engine.playLayeredUnit(sp, wordChar, params.layered['word'].gain)
-      }
-
-      // Fire non-word layers and collect their span highlights
-      const newLayeredHighlights: Partial<Record<LayeredLevel, CharRange | null>> = {}
-
-      for (const level of NON_WORD_LEVELS) {
-        const ld = layerData[level]
-        if (!ld) continue
-
-        const newSpanIdx = ld.wordToSpan[wordIdx] ?? 0
-        const prevSpanIdx = activeSpanIdx[level]
-        const spanUnit = ld.units[newSpanIdx]
-        if (!spanUnit) continue
-
-        const levelConfig = params.layered[level]
-        const char = getSoundCharacter(levelConfig.soundCharacterId) ?? getSoundCharacter('default')!
-
-        if (prevSpanIdx !== newSpanIdx) {
-          // Span transition: fire audio
-          activeSpanIdx[level] = newSpanIdx
-          const sp = buildSoundParams(spanUnit, params)
-          sp.frequency = quantiseToCMajor(sp.frequency)
-          if (levelConfig.sustainMode === 'hold') {
-            const count = ld.spanWordCounts[newSpanIdx] ?? 1
-            sp.duration = (count * beatMs) / 1000
-          } else {
-            sp.duration = beatMs / 1000
-          }
-          engine.playLayeredUnit(sp, char, levelConfig.gain)
-        } else if (levelConfig.sustainMode === 'retrigger') {
-          // Same span, retrigger: fire again
-          const sp = buildSoundParams(spanUnit, params)
-          sp.frequency = quantiseToCMajor(sp.frequency)
-          sp.duration = beatMs / 1000
-          engine.playLayeredUnit(sp, char, levelConfig.gain)
-        }
-        // Same span + hold: no-op — audio node is already sustaining
-
-        const spanRange = ld.spanOffsets[newSpanIdx]
-        if (spanRange) newLayeredHighlights[level] = spanRange
-      }
-
-      setLayeredHighlights(newLayeredHighlights)
-
-      wordIdx++
-      playbackRef.current = setTimeout(step, beatMs)
-    }
-
-    step()
-  }, [text, params, isPlaying, stop])
-
-  const handlePlay = useCallback(() => {
-    if (params.mode === 'layered') {
-      playLayered()
+  const handlePlayPause = useCallback(() => {
+    if (playState === 'playing') {
+      engine.pause()
+      setPlayState('paused')
+    } else if (playState === 'paused') {
+      engine.resume()
+      setPlayState('playing')
     } else {
-      play()
+      startFrom(timeline, 0)
     }
-  }, [params.mode, play, playLayered])
+  }, [playState, startFrom, timeline])
 
-  const displayTokens = useMemo(() => text ? text.split(/(\s+)/) : [], [text])
+  const handleSeek = useCallback((tMs: number) => {
+    const tl = playState !== 'idle' && playingTimelineRef.current ? playingTimelineRef.current : timeline
+    startFrom(tl, tMs)
+  }, [playState, startFrom, timeline])
 
+  // keyboard transport: space toggles play/pause, escape stops
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement | null)?.tagName ?? ''
+      if (tag === 'TEXTAREA' || tag === 'INPUT' || tag === 'SELECT' || tag === 'BUTTON') return
+      if (e.code === 'Space') { e.preventDefault(); handlePlayPause() }
+      else if (e.key === 'Escape') stop()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [handlePlayPause, stop])
+
+  // live typing: sound the word you just completed
+  const previewWord = useCallback((word: string) => {
+    const unit = parseAll(word).units.word.find(u => u.kind === 'text')
+    if (!unit) return
+    const layeredMode = params.mode === 'layered'
+    const ctx = layeredMode
+      ? {
+          level: 'word' as const,
+          scaleFreqs: buildScaleFreqs(params.scale),
+          pan: params.layered.word.pan,
+          defaultCharacterId: params.layered.word.soundCharacterId,
+        }
+      : {
+          level: params.parseLevel === 'letter' ? ('word' as const) : params.parseLevel,
+          scaleFreqs: params.scale.quantize ? buildScaleFreqs(params.scale) : null,
+          pan: 0,
+          defaultCharacterId: null,
+        }
+    const { sp, characterId } = mapUnit(unit, params, ctx)
+    if (layeredMode) sp.gain *= params.layered.word.gain
+    engine.playOne(sp, characterId)
+  }, [params])
+
+  const handleTextChange = useCallback((value: string) => {
+    if (playState !== 'idle') stop()
+    if (liveTyping && value.length === text.length + 1) {
+      const last = value[value.length - 1]!
+      if (/[\s.,!?;:]/.test(last)) {
+        const m = value.slice(0, -1).match(/[\p{L}\p{N}'’]+$/u)
+        if (m) previewWord(m[0])
+      }
+    }
+    setText(value)
+  }, [playState, stop, liveTyping, text, previewWord])
+
+  // ── exports ──
+  const handleRec = useCallback(async () => {
+    if (!timeline.events.length) return
+    setRendering(true)
+    try {
+      const blob = await renderWavBlob(timeline)
+      downloadBlob(blob, `singling-${filenameSlug(text)}.wav`)
+    } finally {
+      setRendering(false)
+    }
+  }, [timeline, text])
+
+  const handleMidi = useCallback(() => {
+    if (!timeline.events.length) return
+    const bytes = buildMidi(timeline, params)
+    downloadBlob(new Blob([bytes.buffer as ArrayBuffer], { type: 'audio/midi' }), `singling-${filenameSlug(text)}.mid`)
+  }, [timeline, params, text])
+
+  const handleTxt = useCallback(() => {
+    if (!timeline.grid.length) return
+    const report = buildParsedTxt(timeline, params, text)
+    downloadBlob(new Blob([report], { type: 'text/plain' }), `singling-${filenameSlug(text)}.txt`)
+  }, [timeline, params, text])
+
+  const handleParamsChange = useCallback((p: AppParams) => {
+    setParams(p)
+    saveToStorage(p)
+  }, [])
+
+  const handleReset = useCallback(() => {
+    stop()
+    setParams(resetToDefaults())
+  }, [stop])
+
+  // ── highlight overlay ──
+  const displayTokens = useMemo(() => (text ? text.split(/(\s+)/) : []), [text])
   const tokenOffsets = useMemo((): CharRange[] => {
     let pos = 0
     return displayTokens.map(t => {
@@ -223,6 +234,52 @@ export default function App() {
     })
   }, [displayTokens])
 
+  const cellIdx = playState === 'idle' ? -1 : cellIndexAt(activeTimeline.grid, posMs)
+  const cell = cellIdx >= 0 ? activeTimeline.grid[cellIdx] ?? null : null
+
+  const layerRanges = useMemo((): Partial<Record<LayeredLevel, CharRange>> => {
+    if (!cell || activeTimeline.mode !== 'layered') return {}
+    const out: Partial<Record<LayeredLevel, CharRange>> = {}
+    for (const level of BACKDROP_LEVELS) {
+      const units = activeTimeline.unitsByLevel[level] ?? []
+      const hit = units.find(u => u.range.start <= cell.range.start && cell.range.start < u.range.end)
+      if (hit) out[level] = hit.range
+    }
+    return out
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cell?.range.start, activeTimeline])
+
+  const activity = useMemo(
+    () => (activeTimeline.mode === 'layered' && playState === 'playing' ? activityAt(activeTimeline.events, posMs) : {}),
+    [activeTimeline, posMs, playState],
+  )
+
+  // keep the overlay aligned with the textarea, and auto-follow the playhead
+  const syncScroll = useCallback(() => {
+    const ta = textareaRef.current
+    const ov = overlayRef.current
+    if (ta && ov) {
+      ov.scrollTop = ta.scrollTop
+      ov.scrollLeft = ta.scrollLeft
+    }
+  }, [])
+
+  useEffect(() => {
+    if (playState === 'idle') return
+    const ov = overlayRef.current
+    const ta = textareaRef.current
+    if (!ov || !ta) return
+    const cur = ov.querySelector<HTMLElement>('.cur')
+    if (!cur) return
+    const top = cur.offsetTop
+    if (top < ta.scrollTop + 8 || top > ta.scrollTop + ta.clientHeight - 28) {
+      ta.scrollTop = Math.max(0, top - ta.clientHeight / 3)
+      syncScroll()
+    }
+  }, [cellIdx, playState, syncScroll])
+
+  const showLegend = params.mode === 'layered'
+
   return (
     <div className="osc-chassis">
       <div className="osc-titlebar">
@@ -230,14 +287,14 @@ export default function App() {
         <span className="osc-screw" />
         <span className="osc-title">
           SINGLING LAB
-          <span className="osc-title__sub">// OSC-1 TEXT SONIFIER</span>
+          <span className="osc-title__sub">// OSC-1S LITERACOUSTIC WORKBENCH</span>
         </span>
         <span className="osc-model">
           <span>pwr</span>
           <span className="osc-led osc-led--pwr" />
           <span>sync</span>
-          <span className={`osc-led${isPlaying ? '' : ' osc-led--off'}`} />
-          <span>ser. 0421</span>
+          <span className={`osc-led${playState === 'playing' ? '' : ' osc-led--off'}`} />
+          <span className="osc-model__ser">ser. 0421</span>
           <button
             className="osc-theme-btn"
             onClick={toggleTheme}
@@ -252,23 +309,65 @@ export default function App() {
 
       <div className="osc-main">
         <div className="osc-col">
-          <CrtScope playing={isPlaying} activeUnit={activeUnit} params={params} tick={tick} />
+          <CrtScope
+            playing={playState === 'playing'}
+            paused={playState === 'paused'}
+            posMs={posMs}
+            totalMs={activeTimeline.totalMs}
+            cell={cell}
+            activity={activity}
+            params={params}
+            stats={stats}
+            theme={theme}
+            getAnalyser={getAnalyser}
+          />
 
-          <div className="osc-input-wrap" style={{ flex: 1 }}>
+          <StructureMap
+            timeline={activeTimeline}
+            textLength={text.length}
+            posMs={posMs}
+            playState={playState}
+            activeLevel={params.parseLevel}
+            onSeek={handleSeek}
+            theme={theme}
+          />
+
+          <div className={`osc-input-wrap${playState !== 'idle' ? ' osc-input-wrap--live' : ''}`} style={{ flex: 1 }}>
             <div className="osc-input-label">input buffer</div>
-            {isPlaying && displayTokens.length > 0 && (
-              <div className="osc-input-overlay" aria-hidden="true">
+            <div className="osc-input-tools">
+              <button
+                className={`osc-chip${liveTyping ? ' osc-chip--on' : ''}`}
+                onClick={() => setLiveTyping(v => !v)}
+                aria-pressed={liveTyping}
+                aria-label="toggle live typing sounds"
+              >
+                live
+              </button>
+              <span className="osc-chip-sep">load:</span>
+              {DEMOS.map(d => (
+                <button
+                  key={d.id}
+                  className="osc-chip"
+                  onClick={() => { if (playState !== 'idle') stop(); setText(d.text) }}
+                  aria-label={`load demo text ${d.label}`}
+                >
+                  {d.label}
+                </button>
+              ))}
+            </div>
+            {playState !== 'idle' && displayTokens.length > 0 && (
+              <div className="osc-input-overlay" ref={overlayRef} aria-hidden="true">
                 {displayTokens.map((t, i) => {
                   const tr = tokenOffsets[i]!
-                  const isCur = !!activeHighlight &&
-                    tr.start >= activeHighlight.start && tr.start < activeHighlight.end
-                  const isPast = !!activeHighlight && tr.end <= activeHighlight.start
-                  const inPhrase = !!layeredHighlights.phrase &&
-                    tr.start >= layeredHighlights.phrase.start && tr.start < layeredHighlights.phrase.end
-                  const inSentence = !!layeredHighlights.sentence &&
-                    tr.start >= layeredHighlights.sentence.start && tr.start < layeredHighlights.sentence.end
-                  const inParagraph = !!layeredHighlights.paragraph &&
-                    tr.start >= layeredHighlights.paragraph.start && tr.start < layeredHighlights.paragraph.end
+                  const isCur = !!cell &&
+                    tr.start >= cell.range.start && tr.start < cell.range.end
+                  const isPast = !!cell && tr.end <= cell.range.start
+                  const inPhrase = !!layerRanges.phrase &&
+                    tr.start >= layerRanges.phrase.start && tr.start < layerRanges.phrase.end
+                  const inSentence = !!layerRanges.sentence &&
+                    tr.start >= layerRanges.sentence.start && tr.start < layerRanges.sentence.end
+                  const inParagraph = !!layerRanges.paragraph &&
+                    tr.start >= layerRanges.paragraph.start && tr.start < layerRanges.paragraph.end
                   const cls = [
                     isCur ? 'cur' : isPast ? 'past' : '',
                     !isCur && inPhrase ? 'hl-phrase' : '',
@@ -280,33 +379,40 @@ export default function App() {
               </div>
             )}
             <textarea
+              ref={textareaRef}
               className="osc-textarea"
-              placeholder="enter source text…"
+              placeholder="enter source text… (or load a demo above)"
               value={text}
-              onChange={e => { if (isPlaying) stop(); setText(e.target.value) }}
+              onChange={e => handleTextChange(e.target.value)}
+              onScroll={syncScroll}
             />
+            {showLegend && (
+              <div className="osc-legend" aria-hidden="true">
+                <span className="osc-legend__item osc-legend__item--phrase">phrase</span>
+                <span className="osc-legend__item osc-legend__item--sentence">sentence</span>
+                <span className="osc-legend__item osc-legend__item--paragraph">paragraph</span>
+              </div>
+            )}
           </div>
 
           <Transport
-            isPlaying={isPlaying}
+            playState={playState}
             canPlay={!!text.trim()}
-            onPlay={handlePlay}
+            rendering={rendering}
+            onPlayPause={handlePlayPause}
             onStop={stop}
-            onReset={() => {
-              stop()
-              const d = DEFAULT_PARAMS
-              setParams(d)
-              saveToStorage(d)
-            }}
-            onExport={() => exportConfig(params)}
+            onReset={handleReset}
+            onRec={() => { void handleRec() }}
           />
         </div>
 
         <Controls
           params={params}
-          onChange={p => { setParams(p); saveToStorage(p) }}
-          isPlaying={isPlaying}
-          tick={tick}
+          onChange={handleParamsChange}
+          getAnalyser={getAnalyser}
+          onExportMidi={handleMidi}
+          onExportTxt={handleTxt}
+          canExport={!!text.trim()}
         />
       </div>
     </div>

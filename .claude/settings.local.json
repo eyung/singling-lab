@@ -71,7 +71,10 @@
       "Read(//opt/**)",
       "Bash(mkdir -p specs/006-osc1-visual-overhaul/checklists)",
       "Bash(cp .specify/templates/spec-template.md specs/006-osc1-visual-overhaul/spec.md)",
-      "Bash(curl -s http://localhost:5173/)"
+      "Bash(curl -s http://localhost:5173/)",
+      "Bash(node *)",
+      "Bash(npx vitest *)",
+      "Bash(npm test *)"
     ]
   }
 }
